@@ -1,0 +1,13 @@
+/_build
+/deps
+erl_crash.dump
+*.ez
+*~
+*#
+.#*
+*.swp
+*_data
+*.config
+*.swp
+.DS_Store
+
