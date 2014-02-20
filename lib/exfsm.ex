@@ -1,5 +1,3 @@
-
-
 defmodule ExFSM do
   # @on_definition { ExFSMdef, :on_def }
 
@@ -21,21 +19,12 @@ defmodule ExFSM do
     str   = Macro.to_string(head)
     [_,fname,fargs] =  Regex.run(%r/(.*?)\((.*?)\)/, str)
     quote do     
-        @desc Dict.put(@desc,unquote(fname),unquote(fargs))
-        def unquote(head), unquote(body)
-        def unquote(binary_to_atom(fname<>"_desc"))(), do: unquote(str)
+      @desc Dict.put(@desc,unquote(fname),[unquote(fargs)
+                                           |Dict.get(@desc,unquote(fname),[])])
+      def unquote(head), unquote(body)
+      def unquote(binary_to_atom(fname<>"_desc"))(), do: unquote(str)
     end  
-
   end
 
 end
 
-# defmodule Sup do
-#     use Supervisor.Behaviour
-#     def start_link(), do: :supervisor.start_link(__MODULE__,[])
-#     def init(_) do
-#       supervise([
-#         worker(__MODULE__,[], restart: :temporary, function: :set_debug)
-#       ], strategy: :one_for_one)
-#     end
-# end
