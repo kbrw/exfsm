@@ -2,20 +2,27 @@ defmodule T do
     use ExFSM
 
     defsfm fct1({:udateorder, _oparams}) do 
-        IO.puts("\nDESC fct1 is => #{inspect @desc} ")
+        # IO.puts("\nDESC fct1 is => #{inspect @desc} ")
         "f1"
     end
 
     defsfm fct2({:trans2, _oparams}) do
-       IO.puts("\nDESC fct2 is => #{inspect @desc} ")
+       # IO.puts("\nDESC fct2 is => #{inspect @desc} ")
        "f2"
     end 
 
-    defsfm fct3({:trans3, _oparams},_other) do 
-        IO.puts("\nDESC fct3 is => #{inspect @desc} ")
-        "f3"
+    defsfm fct3({:trans3_1, _oparams1},_other1) do 
+        # IO.puts("\nDESC fct3 is => #{inspect @desc} ")
+        "f3_1"
     end
-
+    defsfm fct3({:trans3_2, _oparams2},_other2) do 
+        # IO.puts("\nDESC fct3 is => #{inspect @desc} ")
+        "f3_2"
+    end
+    defsfm fct3({:trans3_3, _oparams3},_other3) do 
+        # IO.puts("\nDESC fct3 is => #{inspect @desc} ")
+        "f3_3"
+    end
 end
 
 defmodule ExFSMTest do
@@ -30,7 +37,7 @@ use ExUnit.Case
   end
 
   test "check fct3" do
-   assert( "f3" == T.fct3({:trans3, "oparams"},"other"))
+   assert( "f3_1" == T.fct3({:trans3_1, "oparams1"},"other1"))
   end
 
   test "check fct desc" do
@@ -39,9 +46,12 @@ use ExUnit.Case
 
   test "check desc" do
    dic = T.desc()
-   IO.puts("\nDESC dic is => #{inspect dic} ")
+   # IO.puts("\nDESC dic is => #{inspect dic} ")
    assert( Dict.has_key? dic, "fct1")
    assert( Dict.has_key? dic, "fct2")
-   assert( Dict.has_key? dic, "fct3")
+   # IO.puts("\n\nDICT DESC fct3 content is #{inspect Dict.get(dic,"fct3")} " )
+   assert(Dict.get(dic,"fct3",[]) == ["{:trans3_3, _oparams3}, _other3", 
+                                    "{:trans3_2, _oparams2}, _other2", 
+                                    "{:trans3_1, _oparams1}, _other1"] )
   end
 end
