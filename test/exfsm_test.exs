@@ -5,11 +5,11 @@ defmodule T do
         IO.puts("\nDESC fct1 is => #{inspect @desc} ")
         "f1"
     end
- Macro.expand(
+
     defsfm fct2({:trans2, _oparams}) do
        IO.puts("\nDESC fct2 is => #{inspect @desc} ")
        "f2"
-    end )
+    end 
 
     defsfm fct3({:trans3, _oparams},_other) do 
         IO.puts("\nDESC fct3 is => #{inspect @desc} ")
