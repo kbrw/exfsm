@@ -1,14 +1,17 @@
 defmodule T do
-    require ExFSM
+    use ExFSM
 
-    ExFSM.defsfm fct1({:udateorder, _oparams}) do 
+    defsfm fct1({:udateorder, _oparams}) do 
         IO.puts("\nDESC fct1 is => #{inspect @desc} ")
         "f1"
     end
+ Macro.expand(
+    defsfm fct2({:trans2, _oparams}) do
+       IO.puts("\nDESC fct2 is => #{inspect @desc} ")
+       "f2"
+    end )
 
-    ExFSM.defsfm fct2({:callfct1, _oparams}), do: "f2"
-
-    ExFSM.defsfm fct3({:fct3, _oparams},_other) do 
+    defsfm fct3({:trans3, _oparams},_other) do 
         IO.puts("\nDESC fct3 is => #{inspect @desc} ")
         "f3"
     end
@@ -23,15 +26,22 @@ use ExUnit.Case
   end
 
   test "check fct2" do
-   assert( "f2" == T.fct2({:callfct1, "oparams"}))
+   assert( "f2" == T.fct2({:trans2, "oparams"}))
   end
 
   test "check fct3" do
-   assert( "f3" == T.fct3({:fct3, "oparams"},"other"))
+   assert( "f3" == T.fct3({:trans3, "oparams"},"other"))
   end
 
   test "check fct desc" do
    assert( "fct1({:udateorder, _oparams})" == T.fct1_desc())
   end
 
+  test "check desc" do
+   dic = T.desc()
+   IO.puts("\nDESC dic is => #{inspect dic} ")
+   assert( Dict.has_key? dic, "fct1")
+   assert( Dict.has_key? dic, "fct2")
+   assert( Dict.has_key? dic, "fct3")
+  end
 end
