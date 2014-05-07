@@ -17,7 +17,7 @@ defmodule ExFSM do
 
   defmacro defsfm(head, body) do
     str   = Macro.to_string(head)
-    [_,fname,fargs] =  Regex.run(%r/(.*?)\((.*?)\)/, str)
+    [_,fname,fargs] =  Regex.run(~r/(.*?)\((.*?)\)/, str)
     quote do     
       @desc Dict.put(@desc,unquote(fname),[unquote(fargs)
                                            |Dict.get(@desc,unquote(fname),[])])
