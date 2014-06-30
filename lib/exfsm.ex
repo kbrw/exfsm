@@ -22,7 +22,7 @@ defmodule ExFSM do
       @desc Dict.put(@desc,unquote(fname),[unquote(fargs)
                                            |Dict.get(@desc,unquote(fname),[])])
       def unquote(head), unquote(body)
-      def unquote(binary_to_atom(fname<>"_desc"))(), do: unquote(str)
+      # def unquote(binary_to_atom(fname<>"_desc"))(), do: unquote(str)
     end  
   end
 
