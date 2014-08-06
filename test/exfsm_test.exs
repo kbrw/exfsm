@@ -1,57 +1,50 @@
-defmodule T do
-    use ExFSM
+defmodule T1 do
+  use ExFSM
+  deftrans state1({:trans1, _oparams},s) do
+    case "coucou" do
+      "coucou" -> {:newstate,:state2,s}
+      _ -> {:newstate,:state1,s}
+    end
+  end 
+  deftrans state2({:trans1, _oparams1},s) do 
+    {:newstate,:state3,s}
+  end
+  deftrans state3({:trans2, _oparams2},s) do
+    {:newstate,:state1,s,10}
+  end
+end
+defmodule T2 do
+  use ExFSM
+  deftrans state2({:trans2, _},s) do
+    {:newstate,:state2,s}
+  end
+end
 
-    defsfm fct1({:udateorder, _oparams}) do 
-        # IO.puts("\nDESC fct1 is => #{inspect @desc} ")
-        "f1"
-    end
-
-    defsfm fct2({:trans2, _oparams}) do
-       # IO.puts("\nDESC fct2 is => #{inspect @desc} ")
-       "f2"
-    end 
-
-    defsfm fct3({:trans3_1, _oparams1},_other1) do 
-        # IO.puts("\nDESC fct3 is => #{inspect @desc} ")
-        "f3_1"
-    end
-    defsfm fct3({:trans3_2, _oparams2},_other2) do 
-        # IO.puts("\nDESC fct3 is => #{inspect @desc} ")
-        "f3_2"
-    end
-    defsfm fct3({:trans3_3, _oparams3},_other3) do 
-        # IO.puts("\nDESC fct3 is => #{inspect @desc} ")
-        "f3_3"
-    end
+defmodule Obj do
+  defstruct handlers: []
+  defimpl ExFSM.Obj, for: Obj do
+    def handlers(obj), do: obj.handlers
+    def save(_obj,_state,_transition), do: :ok
+  end
 end
 
 defmodule ExFSMTest do
 use ExUnit.Case
 
-  test "check fct1" do
-   assert( "f1" == T.fct1({:udateorder, "oparams"}))
+  test "check single fsm desc" do
+    assert T1.fsm == %{
+        {:state1,:trans1}=>{T1,[:state2,:state1]},
+        {:state2,:trans1}=>{T1,[:state3]},
+        {:state3,:trans2}=>{T1,[:state1]}
+      }
   end
 
-  test "check fct2" do
-   assert( "f2" == T.fct2({:trans2, "oparams"}))
-  end
-
-  test "check fct3" do
-   assert( "f3_1" == T.fct3({:trans3_1, "oparams1"},"other1"))
-  end
-
-  test "check fct desc" do
-   assert( "fct1({:udateorder, _oparams})" == T.fct1_desc())
-  end
-
-  test "check desc" do
-   dic = T.desc()
-   # IO.puts("\nDESC dic is => #{inspect dic} ")
-   assert( Dict.has_key? dic, "fct1")
-   assert( Dict.has_key? dic, "fct2")
-   # IO.puts("\n\nDICT DESC fct3 content is #{inspect Dict.get(dic,"fct3")} " )
-   assert(Dict.get(dic,"fct3",[]) == ["{:trans3_3, _oparams3}, _other3", 
-                                    "{:trans3_2, _oparams2}, _other2", 
-                                    "{:trans3_1, _oparams1}, _other1"] )
+  test "check multiple handlers fsm" do
+   assert ExFSM.fsm(%Obj{handlers: [T1,T2]}) == %{
+        {:state1,:trans1}=>{T1,[:state2,:state1]},
+        {:state2,:trans1}=>{T1,[:state3]},
+        {:state3,:trans2}=>{T1,[:state1]},
+        {:state2,:trans2}=>{T2,[:state2]},
+      }
   end
 end
