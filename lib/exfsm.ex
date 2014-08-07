@@ -1,53 +1,153 @@
 defmodule ExFSM do
+  @moduledoc """
+  After `use ExFSM` : define FSM transition handler with `deftrans fromstate({action_name,params},state)`.
+  A function `fsm` will be created returning the map `%{{state,action}=>{handler,[dest_state]}}` 
+  describing the fsm. 
+  
+  Destination states are found with AST introspection, if the {:next_state,xxx,xxx} is defined
+  outside the `deftrans` function, you have to define them manually defining a `@to` attribute.
 
-  defmacro __before_compile__(_env) do
-    quote do
-      def fsm, do: @fsm 
-    end
-  end
+  For instance : 
+
+      iex> defmodule Elixir.Door do
+      ...>   use ExFSM
+      ...>   deftrans closed({:open_door,_params},state), do:
+      ...>     {:next_state,:opened,state}
+      ...>   @to [:closed]
+      ...>   deftrans opened({:close_door,_params},state) do
+      ...>     then = :closed
+      ...>     {:next_state,then,state}
+      ...>   end
+      ...> end
+      ...> Door.fsm
+      %{
+        {:closed,:open_door}=>{Door,[:opened]},
+        {:opened,:close_door}=>{Door,[:closed]}
+      }
+  """
 
   defmacro __using__(_opts) do
     quote do
       import ExFSM
       @fsm %{}
+      @to nil
       @before_compile ExFSM
+    end
+  end
+  defmacro __before_compile__(_env) do
+    quote do
+      def fsm, do: @fsm
     end
   end
 
   defmacro deftrans({state,_meta,[{trans,_param}|_rest]}=head, [do: body]) do
     quote do
-      @fsm Dict.put(@fsm,{unquote(state),unquote(trans)},{__MODULE__,unquote(find_newstates(body))})
+      @fsm Dict.put(@fsm,{unquote(state),unquote(trans)},{__MODULE__,@to || unquote(find_nextstates(body))})
       def unquote(head), do: unquote(body)
+      @to nil
     end  
   end
 
-  def find_newstates({:{},_,[:newstate,state|_]}), do: [state]
-  def find_newstates({_,_,asts}), do: find_newstates(asts)
-  def find_newstates({_,asts}), do: find_newstates(asts)
-  def find_newstates(asts) when is_list(asts), do: Enum.flat_map(asts,&find_newstates/1)
-  def find_newstates(_), do: []
+  defp find_nextstates({:{},_,[:next_state,state|_]}) when is_atom(state), do: [state]
+  defp find_nextstates({_,_,asts}), do: find_nextstates(asts)
+  defp find_nextstates({_,asts}), do: find_nextstates(asts)
+  defp find_nextstates(asts) when is_list(asts), do: Enum.flat_map(asts,&find_nextstates/1)
+  defp find_nextstates(_), do: []
+end
 
-  defprotocol Obj do
+defmodule ExFSM.Machine do
+  @moduledoc """
+  Module to simply use FSMs defined with ExFSM : 
+
+  - `Machine.fsm` merge fsm from multiple handlers (see `ExFSM` to see how to define one).
+  - `Machine.send_event` allows you to execute the correct handler from a state and action
+
+  Define a structure implementing `Machine.State` in order to
+  define how to extract handlers and state_name from state, and how
+  to apply state_name change. Then use `Machine.send_event` in order
+  to execute transition (applying handler functions).
+
+      iex> defmodule Elixir.Door1 do
+      ...>   use ExFSM
+      ...>   deftrans closed({:open_door,_},s), do: {:next_state,:opened,s}
+      ...> end
+      ...> defmodule Elixir.Door2 do
+      ...>   use ExFSM
+      ...>   deftrans opened({:close_door,_},s), do: {:next_state,:closed,s}
+      ...> end
+      ...> ExFSM.Machine.fsm([Door1,Door2])
+      %{
+        {:closed,:open_door}=>{Door1,[:opened]},
+        {:opened,:close_door}=>{Door2,[:closed]}
+      }
+      iex> defmodule Elixir.DoorState, do: defstruct(handlers: [], state: nil)
+      ...> defimpl ExFSM.Machine.State, for: DoorState do
+      ...>   def handlers(d), do: d.handlers
+      ...>   def state_name(d), do: d.state
+      ...>   def set_state_name(d,n), do: %{d|state: n}
+      ...> end
+      ...> %{__struct__: DoorState,handlers: [Door1,Door2],state: :closed} 
+      ...>   |> ExFSM.Machine.send_event({:open_door,nil}) 
+      ...>   |> ExFSM.Machine.State.state_name
+      :opened
+
+  """
+  defprotocol State do
     @doc "retrieve current state handlers from state object, return [Handler1,Handler2]"
-    def handlers(obj)
-    @doc "save current state and transition"
-    def save(obj,state,transition)
+    def handlers(state)
+    @doc "retrieve current state name from state object"
+    def state_name(state)
+    @doc "return state object setting state_name"
+    def set_state_name(state,state_name)
   end
 
-  def fsm(obj), do:
-    (obj |> Obj.handlers |> Enum.map(&(&1.fsm)) |> Enum.concat |> Enum.into(%{}))
+  defmodule Callback do
+    @moduledoc "callback module for ExFSM.Machine.send_event : on start and transition end"
+    use Behaviour
+    defcallback start_transition(state :: term, {action :: atom, params :: term}) :: term
+    defcallback end_transition(state :: term, {action :: atom, params :: term}) :: term
+    # default implementation do nothing
+    def start_transition(s,_), do: s
+    def end_transition(s,_), do: s
+  end
 
-  def apply(obj,{action,params}) do
-    {state,trans,ts} = Obj.state_info(obj)
-    case Dict.get(fsm(obj),{state,action}) do
-      {handler,_deststates}->
-        Obj.save(obj,state,action)
-        case apply(handler,state,[{action,params},obj]) do
-          {:newstate,newstate,newobj}-> 
-            Obj.save(newobj,newstate,nil)
+  @doc "return the FSM as a map of transitions %{{state,action}=>{handler,[dest_states]}} based on handlers"
+  def fsm(handlers) when is_list(handlers), do:
+    (handlers |> Enum.map(&(&1.fsm)) |> Enum.concat |> Enum.into(%{}))
+  def fsm(state), do:
+    fsm(State.handlers(state))
+
+  @doc "find right handler handling this action from this state" 
+  def find_handler({state_name,action},handlers) when is_list(handlers) do
+    case Dict.get(fsm(handlers),{state_name,action}) do
+      {handler,_}-> handler
+      _ -> nil
+    end
+  end
+  def find_handler({state,action}), do:
+    find_handler({State.state_name(state),action},State.handlers(state))
+
+  @doc """
+    - find the right handler for this action and state
+    - apply the transition function (callback start_transition and end_transition)
+    - if return {:next_state,state_name,state,timeout} : spawn send_event after timeout
+  """
+  def send_event(state,{action,params},callback \\ Callback) do
+    case find_handler({state,action}) do
+      nil -> :illegal_action
+      handler ->
+        state = callback.start_transition(state,{action,params})
+        case apply(handler,State.state_name(state),[{action,params},state]) do
+          {:next_state,newstate_name,newstate}->
+            newstate = State.set_state_name(newstate,newstate_name)
+            callback.end_transition(newstate,{action,params})
+          {:next_state,newstate_name,newstate,timeout}->
+            newstate = State.set_state_name(newstate,newstate_name)
+            newstate = callback.end_transition(newstate,{action,params})
+            spawn(fn -> 
+              receive do after timeout->send_event(newstate,{:timeout,nil},callback) end 
+            end)
         end
-      _ -> {:transition_impossible,state,action}
     end
   end
 end
-
