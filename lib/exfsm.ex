@@ -136,18 +136,21 @@ defmodule ExFSM.Machine do
   """
   def send_event(state,{action,params},options \\ [async: false,callback: Callback]) do
     case find_handler({state,action}) do
-      nil -> :illegal_action
+      nil -> {:error,:illegal_action}
       handler ->
-        state = options[:callback].start_transition(state,{action,params})
-        case apply(handler,State.state_name(state),[{action,params},state]) do
-          {:next_state,newstate_name,newstate}->
-            options[:callback].end_transition(newstate,{action,params},newstate_name)
-          {:next_state,newstate_name,newstate,timeout}->
-            newstate = options[:callback].end_transition(newstate,{action,params},newstate_name)
-            next_transition = fn -> 
-              receive do after timeout->send_event(newstate,{:timeout,nil},options) end 
+        case options[:callback].start_transition(state,{action,params}) do
+          {:error,reason} -> {:error,reason}
+          state ->
+            case apply(handler,State.state_name(state),[{action,params},state]) do
+              {:next_state,newstate_name,newstate}->
+                options[:callback].end_transition(newstate,{action,params},newstate_name)
+              {:next_state,newstate_name,newstate,timeout}->
+                newstate = options[:callback].end_transition(newstate,{action,params},newstate_name)
+                next_transition = fn -> 
+                  receive do after timeout->send_event(newstate,{:timeout,nil},options) end 
+                end
+                if options[:async],do: (spawn(next_transition);newstate), else: next_transition.()
             end
-            if options[:async],do: (spawn(next_transition);newstate), else: next_transition.()
         end
     end
   end
