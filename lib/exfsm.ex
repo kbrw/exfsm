@@ -81,13 +81,17 @@ defmodule ExFSM.Machine do
         {:opened,:close_door}=>{Door2,[:closed]}
       }
       iex> defmodule Elixir.DoorState, do: defstruct(handlers: [], state: nil)
+      ...> defmodule DoorCallback do
+      ...>   @behaviour ExFSM.Machine.Callback
+      ...>   def start_transition(s,_), do: s
+      ...>   def end_transition(s,_,new_state_name), do: %{s|state: new_state_name}
+      ...> end
       ...> defimpl ExFSM.Machine.State, for: DoorState do
       ...>   def handlers(d), do: d.handlers
       ...>   def state_name(d), do: d.state
-      ...>   def set_state_name(d,n), do: %{d|state: n}
       ...> end
       ...> %{__struct__: DoorState,handlers: [Door1,Door2],state: :closed} 
-      ...>   |> ExFSM.Machine.send_event({:open_door,nil}) 
+      ...>   |> ExFSM.Machine.send_event({:open_door,nil}, callback: DoorCallback) 
       ...>   |> ExFSM.Machine.State.state_name
       :opened
 
@@ -97,18 +101,16 @@ defmodule ExFSM.Machine do
     def handlers(state)
     @doc "retrieve current state name from state object"
     def state_name(state)
-    @doc "return state object setting state_name"
-    def set_state_name(state,state_name)
   end
 
   defmodule Callback do
     @moduledoc "callback module for ExFSM.Machine.send_event : on start and transition end"
     use Behaviour
     defcallback start_transition(state :: term, {action :: atom, params :: term}) :: term
-    defcallback end_transition(state :: term, {action :: atom, params :: term}) :: term
+    defcallback end_transition(state :: term, {action :: atom, params :: term}, new_state_name :: atom ) :: term
     # default implementation do nothing
     def start_transition(s,_), do: s
-    def end_transition(s,_), do: s
+    def end_transition(s,_,_), do: s
   end
 
   @doc "return the FSM as a map of transitions %{{state,action}=>{handler,[dest_states]}} based on handlers"
@@ -132,21 +134,20 @@ defmodule ExFSM.Machine do
     - apply the transition function (callback start_transition and end_transition)
     - if return {:next_state,state_name,state,timeout} : spawn send_event after timeout
   """
-  def send_event(state,{action,params},callback \\ Callback) do
+  def send_event(state,{action,params},options \\ [async: false,callback: Callback]) do
     case find_handler({state,action}) do
       nil -> :illegal_action
       handler ->
-        state = callback.start_transition(state,{action,params})
+        state = options[:callback].start_transition(state,{action,params})
         case apply(handler,State.state_name(state),[{action,params},state]) do
           {:next_state,newstate_name,newstate}->
-            newstate = State.set_state_name(newstate,newstate_name)
-            callback.end_transition(newstate,{action,params})
+            options[:callback].end_transition(newstate,{action,params},newstate_name)
           {:next_state,newstate_name,newstate,timeout}->
-            newstate = State.set_state_name(newstate,newstate_name)
-            newstate = callback.end_transition(newstate,{action,params})
-            spawn(fn -> 
-              receive do after timeout->send_event(newstate,{:timeout,nil},callback) end 
-            end)
+            newstate = options[:callback].end_transition(newstate,{action,params},newstate_name)
+            next_transition = fn -> 
+              receive do after timeout->send_event(newstate,{:timeout,nil},options) end 
+            end
+            if options[:async],do: (spawn(next_transition);newstate), else: next_transition.()
         end
     end
   end
