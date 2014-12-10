@@ -42,7 +42,7 @@ defmodule ExFSM do
 
   defmacro deftrans({state,_meta,[{trans,_param}|_rest]}=head, [do: body]) do
     quote do
-      @fsm Dict.put(@fsm,{unquote(state),unquote(trans)},{__MODULE__,@to || unquote(find_nextstates(body))})
+      @fsm Dict.put(@fsm,{unquote(state),unquote(trans)},{__MODULE__,@to || unquote(Enum.uniq(find_nextstates(body)))})
       def unquote(head), do: unquote(body)
       @to nil
     end  
