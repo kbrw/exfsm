@@ -65,7 +65,7 @@ defmodule ExFSM.Machine do
   Define a structure implementing `Machine.State` in order to
   define how to extract handlers and state_name from state, and how
   to apply state_name change. Then use `Machine.send_event` in order
-  to execute transition (applying handler functions).
+  to execute transition.
 
       iex> defmodule Elixir.Door1 do
       ...>   use ExFSM
@@ -81,19 +81,14 @@ defmodule ExFSM.Machine do
         {:opened,:close_door}=>{Door2,[:closed]}
       }
       iex> defmodule Elixir.DoorState, do: defstruct(handlers: [], state: nil)
-      ...> defmodule DoorCallback do
-      ...>   @behaviour ExFSM.Machine.Callback
-      ...>   def start_transition(s,_), do: s
-      ...>   def end_transition(s,_,new_state_name), do: %{s|state: new_state_name}
-      ...> end
       ...> defimpl ExFSM.Machine.State, for: DoorState do
       ...>   def handlers(d), do: d.handlers
       ...>   def state_name(d), do: d.state
+      ...>   def set_state_name(d,name), do: %{d|state: name}
       ...> end
       ...> %{__struct__: DoorState,handlers: [Door1,Door2],state: :closed} 
-      ...>   |> ExFSM.Machine.send_event({:open_door,nil}, callback: DoorCallback) 
-      ...>   |> ExFSM.Machine.State.state_name
-      :opened
+      ...>   |> ExFSM.Machine.event({:open_door,nil}) 
+      {:next_state,%{__struct__: DoorState,handlers: [Door1,Door2],state: :opened}}
 
   """
   defprotocol State do
@@ -101,16 +96,8 @@ defmodule ExFSM.Machine do
     def handlers(state)
     @doc "retrieve current state name from state object"
     def state_name(state)
-  end
-
-  defmodule Callback do
-    @moduledoc "callback module for ExFSM.Machine.send_event : on start and transition end"
-    use Behaviour
-    defcallback start_transition(state :: term, {action :: atom, params :: term}) :: term
-    defcallback end_transition(state :: term, {action :: atom, params :: term}, new_state_name :: atom ) :: term
-    # default implementation do nothing
-    def start_transition(s,_), do: s
-    def end_transition(s,_,_), do: s
+    @doc "set new state name"
+    def set_state_name(state,state_name)
   end
 
   @doc "return the FSM as a map of transitions %{{state,action}=>{handler,[dest_states]}} based on handlers"
@@ -131,26 +118,16 @@ defmodule ExFSM.Machine do
 
   @doc """
     - find the right handler for this action and state
-    - apply the transition function (callback start_transition and end_transition)
-    - if return {:next_state,state_name,state,timeout} : spawn send_event after timeout
+    - return {:next_state,state_name,state,timeout} or {:next_state,state_name,state} or {:error,:illegal_action}
   """
-  def send_event(state,{action,params},options \\ [async: false,callback: Callback]) do
+  def event(state,{action,params}) do
     case find_handler({state,action}) do
       nil -> {:error,:illegal_action}
       handler ->
-        case options[:callback].start_transition(state,{action,params}) do
-          {:error,reason} -> {:error,reason}
-          state ->
-            case apply(handler,State.state_name(state),[{action,params},state]) do
-              {:next_state,newstate_name,newstate}->
-                options[:callback].end_transition(newstate,{action,params},newstate_name)
-              {:next_state,newstate_name,newstate,timeout}->
-                newstate = options[:callback].end_transition(newstate,{action,params},newstate_name)
-                next_transition = fn -> 
-                  receive do after timeout->send_event(newstate,{:timeout,nil},options) end 
-                end
-                if options[:async],do: (spawn(next_transition);newstate), else: next_transition.()
-            end
+        case apply(handler,State.state_name(state),[{action,params},state]) do
+          {:next_state,state_name,state,timeout} -> {:next_state,State.set_state_name(state,state_name)}
+          {:next_state,state_name,state} -> {:next_state,State.set_state_name(state,state_name)}
+          other -> other
         end
     end
   end
