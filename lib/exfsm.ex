@@ -125,10 +125,20 @@ defmodule ExFSM.Machine do
       nil -> {:error,:illegal_action}
       handler ->
         case apply(handler,State.state_name(state),[{action,params},state]) do
-          {:next_state,state_name,state,timeout} -> {:next_state,State.set_state_name(state,state_name)}
+          {:next_state,state_name,state,timeout} -> {:next_state,State.set_state_name(state,state_name),timeout}
           {:next_state,state_name,state} -> {:next_state,State.set_state_name(state,state_name)}
           other -> other
         end
     end
+  end
+
+  def available_actions(state) do
+    ExFSM.Machine.fsm(state) 
+    |> Enum.filter(fn {{from,_},_}->from==State.state_name(state) end)
+    |> Enum.map(fn {{_,action},_}->action end)
+  end
+
+  def action_available?(state,action) do
+    action in available_actions(state) 
   end
 end
