@@ -31,6 +31,7 @@ defmodule ExFSM do
     quote do
       import ExFSM
       @fsm %{}
+      @bypasses %{}
       @to nil
       @before_compile ExFSM
     end
@@ -38,6 +39,7 @@ defmodule ExFSM do
   defmacro __before_compile__(_env) do
     quote do
       def fsm, do: @fsm
+      def event_bypasses, do: @bypasses
     end
   end
 
@@ -64,6 +66,13 @@ defmodule ExFSM do
   defp find_nextstates({_,asts}), do: find_nextstates(asts)
   defp find_nextstates(asts) when is_list(asts), do: Enum.flat_map(asts,&find_nextstates/1)
   defp find_nextstates(_), do: []
+
+  defmacro defbypass({event,_meta,_args}=signature,body_block) do 
+    quote do
+      @bypasses Dict.put(@bypasses,unquote(event),__MODULE__)
+      def unquote(signature), do: unquote(body_block[:do])
+    end 
+  end
 end
 
 defmodule ExFSM.Machine do
@@ -71,6 +80,7 @@ defmodule ExFSM.Machine do
   Module to simply use FSMs defined with ExFSM : 
 
   - `ExFSM.Machine.fsm/1` merge fsm from multiple handlers (see `ExFSM` to see how to define one).
+  - `ExFSM.Machine.event_bypasses/1` merge bypasses from multiple handlers (see `ExFSM` to see how to define one).
   - `ExFSM.Machine.event/2` allows you to execute the correct handler from a state and action
 
   Define a structure implementing `ExFSM.Machine.State` in order to
@@ -84,6 +94,7 @@ defmodule ExFSM.Machine do
       ...> end
       ...> defmodule Elixir.Door2 do
       ...>   use ExFSM
+      ...>   defbypass close_door(_,s), do: {:bypassed_state,Map.put(s,:doubleclosed,true)}
       ...>   deftrans opened({:close_door,_},s) do {:next_state,:closed,s} end
       ...> end
       ...> ExFSM.Machine.fsm([Door1,Door2])
@@ -91,17 +102,24 @@ defmodule ExFSM.Machine do
         {:closed,:open_door}=>{Door1,[:opened]},
         {:opened,:close_door}=>{Door2,[:closed]}
       }
-      iex> defmodule Elixir.DoorState, do: defstruct(handlers: [], state: nil)
+      iex> ExFSM.Machine.event_bypasses([Door1,Door2])
+      %{close_door: Door2}
+
+  Then define a struct implementing `ExFSM.Machine.State` in order to use merged fsms and bypasses from the
+  handlers extracted with the protocol.
+
+      iex> defmodule Elixir.DoorState do defstruct(handlers: [Door1,Door2], state: nil, doubleclosed: false) end
       ...> defimpl ExFSM.Machine.State, for: DoorState do
       ...>   def handlers(d) do d.handlers end
       ...>   def state_name(d) do d.state end
       ...>   def set_state_name(d,name) do %{d|state: name} end
       ...> end
-      ...> %{__struct__: DoorState,handlers: [Door1,Door2],state: :closed} 
-      ...>   |> ExFSM.Machine.event({:open_door,nil}) 
-      {:next_state,%{__struct__: DoorState,handlers: [Door1,Door2],state: :opened}}
-
+      ...> struct(DoorState, state: :closed) |> ExFSM.Machine.event({:open_door,nil})
+      {:next_state,%{__struct__: DoorState, handlers: [Door1,Door2],state: :opened, doubleclosed: false}}
+      ...> struct(DoorState, state: :closed) |> ExFSM.Machine.event({:close_door,nil})
+      {:bypassed_state,%{__struct__: DoorState, handlers: [Door1,Door2],state: :closed, doubleclosed: true}}
   """
+
   defprotocol State do
     @doc "retrieve current state handlers from state object, return [Handler1,Handler2]"
     def handlers(state)
@@ -118,6 +136,11 @@ defmodule ExFSM.Machine do
   def fsm(state), do:
     fsm(State.handlers(state))
 
+  def event_bypasses(handlers) when is_list(handlers), do:
+    (handlers |> Enum.map(&(&1.event_bypasses)) |> Enum.concat |> Enum.into(%{}))
+  def event_bypasses(state), do:
+    event_bypasses(State.handlers(state))
+
   @doc "find the ExFSM Module from the list `handlers` implementing the event `action` from `state_name`"
   @spec find_handler({state_name::atom,event_name::atom},[exfsm_module :: atom]) :: exfsm_module :: atom
   def find_handler({state_name,action},handlers) when is_list(handlers) do
@@ -130,12 +153,23 @@ defmodule ExFSM.Machine do
   def find_handler({state,action}), do:
     find_handler({State.state_name(state),action},State.handlers(state))
 
+  def find_bypass(handlers_or_state,action) do
+    event_bypasses(handlers_or_state)[action]
+  end
+
   @doc "Meta application of the transition function, using `find_handler/2` to find the module implementing it."
   @type meta_event_reply :: {:next_state,ExFSM.Machine.State.t} | {:next_state,ExFSM.Machine.State.t,timeout :: integer} | {:error,:illegal_action}
   @spec event(ExFSM.Machine.State.t,{event_name :: atom, event_params :: any}) :: meta_event_reply
   def event(state,{action,params}) do
     case find_handler({state,action}) do
-      nil -> {:error,:illegal_action}
+      nil -> 
+        case find_bypass(state,action) do
+          nil-> {:error,:illegal_action}
+          handler-> case apply(handler,action,[params,state]) do
+              {:error,error}->{:error,{:bypass_fun_error,error}}
+              {:bypassed_state,state}->{:bypassed_state,state}
+            end
+        end
       handler ->
         case apply(handler,State.state_name(state),[{action,params},state]) do
           {:next_state,state_name,state,timeout} -> {:next_state,State.set_state_name(state,state_name),timeout}
@@ -147,9 +181,11 @@ defmodule ExFSM.Machine do
 
   @spec available_actions(ExFSM.Machine.State.t) :: [action_name :: atom]
   def available_actions(state) do
-    ExFSM.Machine.fsm(state) 
-    |> Enum.filter(fn {{from,_},_}->from==State.state_name(state) end)
-    |> Enum.map(fn {{_,action},_}->action end)
+    fsm_actions = ExFSM.Machine.fsm(state) 
+      |> Enum.filter(fn {{from,_},_}->from==State.state_name(state) end)
+      |> Enum.map(fn {{_,action},_}->action end)
+    bypasses_actions = ExFSM.Machine.event_bypasses(state)
+    Enum.uniq(fsm_actions ++ bypasses_actions)
   end
 
   @spec action_available?(ExFSM.Machine.State.t,action_name :: atom) :: boolean

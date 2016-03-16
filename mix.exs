@@ -4,7 +4,9 @@ defmodule ExFSM.Mixfile do
   def project do
     [ app: :exfsm,
       version: "0.0.3",     
-      elixir: "~> 1.0.0",     
+      elixir: "~> 1.2.0",     
+      build_embedded: Mix.env == :prod,
+      consolidate_protocols: Mix.env != :test,
       docs: [
         main: "ExFSM",
         source_url: "https://github.com/awetzel/exfsm",
