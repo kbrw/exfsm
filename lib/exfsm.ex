@@ -32,6 +32,8 @@ defmodule ExFSM do
       import ExFSM
       @fsm %{}
       @bypasses %{}
+      @docs %{}
+      @doc nil
       @to nil
       @before_compile ExFSM
     end
@@ -40,6 +42,7 @@ defmodule ExFSM do
     quote do
       def fsm, do: @fsm
       def event_bypasses, do: @bypasses
+      def docs, do: @docs
     end
   end
 
@@ -56,8 +59,10 @@ defmodule ExFSM do
   defmacro deftrans({state,_meta,[{trans,_param}|_rest]}=signature, body_block) do
     quote do
       @fsm Dict.put(@fsm,{unquote(state),unquote(trans)},{__MODULE__,@to || unquote(Enum.uniq(find_nextstates(body_block[:do])))})
+      @docs Dict.put(@docs,{:transition_doc,unquote(state),unquote(trans)},@doc)
       def unquote(signature), do: unquote(body_block[:do])
       @to nil
+      @doc nil
     end  
   end
 
@@ -70,7 +75,9 @@ defmodule ExFSM do
   defmacro defbypass({event,_meta,_args}=signature,body_block) do 
     quote do
       @bypasses Dict.put(@bypasses,unquote(event),__MODULE__)
+      @docs Dict.put(@docs,{:event_doc,unquote(event)},@doc)
       def unquote(signature), do: unquote(body_block[:do])
+      @doc nil
     end 
   end
 end
@@ -94,7 +101,9 @@ defmodule ExFSM.Machine do
       ...> end
       ...> defmodule Elixir.Door2 do
       ...>   use ExFSM
+      ...>   @doc "allow multiple closes"
       ...>   defbypass close_door(_,s), do: {:keep_state,Map.put(s,:doubleclosed,true)}
+      ...>   @doc "standard door open"
       ...>   deftrans opened({:close_door,_},s) do {:next_state,:closed,s} end
       ...> end
       ...> ExFSM.Machine.fsm([Door1,Door2])
@@ -113,7 +122,11 @@ defmodule ExFSM.Machine do
       ...> struct(DoorState, state: :closed) |> ExFSM.Machine.event({:open_door,nil})
       {:next_state,%{__struct__: DoorState, handlers: [Door1,Door2],state: :opened, doubleclosed: false}}
       ...> struct(DoorState, state: :closed) |> ExFSM.Machine.event({:close_door,nil})
-      {:bypass,%{__struct__: DoorState, handlers: [Door1,Door2],state: :closed, doubleclosed: true}}
+      {:next_state,%{__struct__: DoorState, handlers: [Door1,Door2],state: :closed, doubleclosed: true}}
+      iex> ExFSM.Machine.find_info(struct(DoorState, state: :opened),:close_door)
+      {:known_transition,"standard door open"}
+      iex> ExFSM.Machine.find_info(struct(DoorState, state: :closed),:close_door)
+      {:bypass,"allow multiple closes"}
   """
 
   defprotocol State do
@@ -153,6 +166,20 @@ defmodule ExFSM.Machine do
     event_bypasses(handlers_or_state)[action]
   end
 
+  def infos(handlers,action) when is_list(handlers), do:
+    (handlers |> Enum.map(&(&1.docs)) |> Enum.concat |> Enum.into(%{}))
+  def infos(state,action), do: 
+    infos(State.handlers(state),action)
+
+  def find_info(state,action) do
+    docs = infos(state,action)
+    if doc = docs[{:transition_doc,State.state_name(state),action}] do
+      {:known_transition,doc}
+    else
+      {:bypass,docs[{:event_doc,action}]}
+    end
+  end
+
   @doc "Meta application of the transition function, using `find_handler/2` to find the module implementing it."
   @type meta_event_reply :: {:next_state,ExFSM.Machine.State.t} | {:next_state,ExFSM.Machine.State.t,timeout :: integer} | {:error,:illegal_action}
   @spec event(ExFSM.Machine.State.t,{event_name :: atom, event_params :: any}) :: meta_event_reply
@@ -162,9 +189,9 @@ defmodule ExFSM.Machine do
         case find_bypass(state,action) do
           nil-> {:error,:illegal_action}
           handler-> case apply(handler,action,[params,state]) do
-              {:keep_state,state}->{:bypass,state}
-              {:next_state,state_name,state,timeout} -> {:bypass,State.set_state_name(state,state_name),timeout}
-              {:next_state,state_name,state} -> {:bypass,State.set_state_name(state,state_name)}
+              {:keep_state,state}->{:next_state,state}
+              {:next_state,state_name,state,timeout} -> {:next_state,State.set_state_name(state,state_name),timeout}
+              {:next_state,state_name,state} -> {:next_state,State.set_state_name(state,state_name)}
               other -> other
             end
         end
