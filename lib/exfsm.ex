@@ -127,6 +127,8 @@ defmodule ExFSM.Machine do
       {:known_transition,"standard door open"}
       iex> ExFSM.Machine.find_info(struct(DoorState, state: :closed),:close_door)
       {:bypass,"allow multiple closes"}
+      iex> ExFSM.Machine.available_actions(struct(DoorState, state: :closed))
+      [:open_door,:close_door]
   """
 
   defprotocol State do
@@ -209,7 +211,7 @@ defmodule ExFSM.Machine do
     fsm_actions = ExFSM.Machine.fsm(state) 
       |> Enum.filter(fn {{from,_},_}->from==State.state_name(state) end)
       |> Enum.map(fn {{_,action},_}->action end)
-    bypasses_actions = ExFSM.Machine.event_bypasses(state)
+    bypasses_actions = ExFSM.Machine.event_bypasses(state) |> Dict.keys
     Enum.uniq(fsm_actions ++ bypasses_actions)
   end
 
