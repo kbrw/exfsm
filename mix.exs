@@ -21,6 +21,6 @@ defmodule ExFSM.Mixfile do
        licenses: ["MIT"],
        links: %{"GitHub" => "https://github.com/awetzel/exfsm", "Doc"=>"http://hexdocs.pm/exfsm"}
      ],
-      deps: [{:ex_doc, only: :dev}] ]
+      deps: [{:ex_doc, ">= 0.11.0", only: :dev},{:earmark, ">= 0.0.0", only: :dev}] ]
   end
 end
