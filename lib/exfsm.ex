@@ -94,7 +94,7 @@ defmodule ExFSM.Machine do
       ...> end
       ...> defmodule Elixir.Door2 do
       ...>   use ExFSM
-      ...>   defbypass close_door(_,s), do: {:bypassed_state,Map.put(s,:doubleclosed,true)}
+      ...>   defbypass close_door(_,s), do: {:keep_state,Map.put(s,:doubleclosed,true)}
       ...>   deftrans opened({:close_door,_},s) do {:next_state,:closed,s} end
       ...> end
       ...> ExFSM.Machine.fsm([Door1,Door2])
@@ -104,10 +104,6 @@ defmodule ExFSM.Machine do
       }
       iex> ExFSM.Machine.event_bypasses([Door1,Door2])
       %{close_door: Door2}
-
-  Then define a struct implementing `ExFSM.Machine.State` in order to use merged fsms and bypasses from the
-  handlers extracted with the protocol.
-
       iex> defmodule Elixir.DoorState do defstruct(handlers: [Door1,Door2], state: nil, doubleclosed: false) end
       ...> defimpl ExFSM.Machine.State, for: DoorState do
       ...>   def handlers(d) do d.handlers end
@@ -117,7 +113,7 @@ defmodule ExFSM.Machine do
       ...> struct(DoorState, state: :closed) |> ExFSM.Machine.event({:open_door,nil})
       {:next_state,%{__struct__: DoorState, handlers: [Door1,Door2],state: :opened, doubleclosed: false}}
       ...> struct(DoorState, state: :closed) |> ExFSM.Machine.event({:close_door,nil})
-      {:bypassed_state,%{__struct__: DoorState, handlers: [Door1,Door2],state: :closed, doubleclosed: true}}
+      {:bypass,%{__struct__: DoorState, handlers: [Door1,Door2],state: :closed, doubleclosed: true}}
   """
 
   defprotocol State do
@@ -166,8 +162,10 @@ defmodule ExFSM.Machine do
         case find_bypass(state,action) do
           nil-> {:error,:illegal_action}
           handler-> case apply(handler,action,[params,state]) do
-              {:error,error}->{:error,{:bypass_fun_error,error}}
-              {:bypassed_state,state}->{:bypassed_state,state}
+              {:keep_state,state}->{:bypass,state}
+              {:next_state,state_name,state,timeout} -> {:bypass,State.set_state_name(state,state_name),timeout}
+              {:next_state,state_name,state} -> {:bypass,State.set_state_name(state,state_name)}
+              other -> other
             end
         end
       handler ->

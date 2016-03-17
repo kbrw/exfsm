@@ -3,7 +3,7 @@ defmodule ExFSM.Mixfile do
 
   def project do
     [ app: :exfsm,
-      version: "0.1.0",     
+      version: "0.1.1",     
       elixir: "~> 1.2.0",     
       build_embedded: Mix.env == :prod,
       consolidate_protocols: Mix.env != :test,
