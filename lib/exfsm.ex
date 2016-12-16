@@ -168,7 +168,7 @@ defmodule ExFSM.Machine do
     event_bypasses(handlers_or_state)[action]
   end
 
-  def infos(handlers,action) when is_list(handlers), do:
+  def infos(handlers,_action) when is_list(handlers), do:
     (handlers |> Enum.map(&(&1.docs)) |> Enum.concat |> Enum.into(%{}))
   def infos(state,action), do: 
     infos(State.handlers(state),action)
