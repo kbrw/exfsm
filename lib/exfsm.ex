@@ -33,7 +33,6 @@ defmodule ExFSM do
       @fsm %{}
       @bypasses %{}
       @docs %{}
-      @doc nil
       @to nil
       @before_compile ExFSM
     end
@@ -59,10 +58,10 @@ defmodule ExFSM do
   defmacro deftrans({state,_meta,[{trans,_param}|_rest]}=signature, body_block) do
     quote do
       @fsm Dict.put(@fsm,{unquote(state),unquote(trans)},{__MODULE__,@to || unquote(Enum.uniq(find_nextstates(body_block[:do])))})
-      @docs Dict.put(@docs,{:transition_doc,unquote(state),unquote(trans)},@doc)
+      doc = Module.get_attribute(__MODULE__, :doc)
+      @docs Dict.put(@docs,{:transition_doc,unquote(state),unquote(trans)},doc)
       def unquote(signature), do: unquote(body_block[:do])
       @to nil
-      @doc nil
     end  
   end
 
@@ -75,9 +74,9 @@ defmodule ExFSM do
   defmacro defbypass({event,_meta,_args}=signature,body_block) do 
     quote do
       @bypasses Dict.put(@bypasses,unquote(event),__MODULE__)
-      @docs Dict.put(@docs,{:event_doc,unquote(event)},@doc)
+      doc = Module.get_attribute(__MODULE__, :doc)
+      @docs Dict.put(@docs,{:event_doc,unquote(event)},doc)
       def unquote(signature), do: unquote(body_block[:do])
-      @doc nil
     end 
   end
 end
