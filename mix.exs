@@ -3,7 +3,7 @@ defmodule ExFSM.Mixfile do
 
   def project do
     [ app: :exfsm,
-      version: "0.1.4",
+      version: "0.1.5",
       elixir: ">= 1.2.0",
       build_embedded: Mix.env == :prod,
       consolidate_protocols: Mix.env != :test,
@@ -22,8 +22,7 @@ defmodule ExFSM.Mixfile do
        links: %{"GitHub" => "https://github.com/awetzel/exfsm", "Doc"=>"http://hexdocs.pm/exfsm"}
      ],
       deps: [
-	{:ex_doc, ">= 0.14.5", only: :dev},
-	{:earmark, ">= 1.0.3", only: :dev}
+	      {:ex_doc, ">= 0.0.0", only: :dev},
       ]
     ]
   end

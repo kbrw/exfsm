@@ -85,9 +85,9 @@ defmodule ExFSM do
   @type transition :: (({event_name :: atom, event_param :: any},state :: any) -> {:next_state,event_name :: atom,state :: any})
   defmacro deftrans({state,_meta,[{trans,_param}|_rest]}=signature, body_block) do
     quote do
-      @fsm Dict.put(@fsm,{unquote(state),unquote(trans)},{__MODULE__,@to || unquote(Enum.uniq(find_nextstates(body_block[:do])))})
+      @fsm Map.put(@fsm,{unquote(state),unquote(trans)},{__MODULE__,@to || unquote(Enum.uniq(find_nextstates(body_block[:do])))})
       doc = Module.get_attribute(__MODULE__, :doc)
-      @docs Dict.put(@docs,{:transition_doc,unquote(state),unquote(trans)},doc)
+      @docs Map.put(@docs,{:transition_doc,unquote(state),unquote(trans)},doc)
       def unquote(signature), do: unquote(body_block[:do])
       @to nil
     end  
@@ -101,9 +101,9 @@ defmodule ExFSM do
 
   defmacro defbypass({event,_meta,_args}=signature,body_block) do 
     quote do
-      @bypasses Dict.put(@bypasses,unquote(event),__MODULE__)
+      @bypasses Map.put(@bypasses,unquote(event),__MODULE__)
       doc = Module.get_attribute(__MODULE__, :doc)
-      @docs Dict.put(@docs,{:event_doc,unquote(event)},doc)
+      @docs Map.put(@docs,{:event_doc,unquote(event)},doc)
       def unquote(signature), do: unquote(body_block[:do])
     end 
   end
@@ -182,7 +182,7 @@ defmodule ExFSM.Machine do
   @doc "find the ExFSM Module from the list `handlers` implementing the event `action` from `state_name`"
   @spec find_handler({state_name::atom,event_name::atom},[exfsm_module :: atom]) :: exfsm_module :: atom
   def find_handler({state_name,action},handlers) when is_list(handlers) do
-    case Dict.get(fsm(handlers),{state_name,action}) do
+    case Map.get(fsm(handlers),{state_name,action}) do
       {handler,_}-> handler
       _ -> nil
     end
@@ -238,7 +238,7 @@ defmodule ExFSM.Machine do
     fsm_actions = ExFSM.Machine.fsm(state) 
       |> Enum.filter(fn {{from,_},_}->from==State.state_name(state) end)
       |> Enum.map(fn {{_,action},_}->action end)
-    bypasses_actions = ExFSM.Machine.event_bypasses(state) |> Dict.keys
+    bypasses_actions = ExFSM.Machine.event_bypasses(state) |> Map.keys
     Enum.uniq(fsm_actions ++ bypasses_actions)
   end
 
