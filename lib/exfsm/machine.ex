@@ -13,38 +13,48 @@ defmodule ExFSM.Machine do
 
       iex> defmodule Elixir.Door1 do
       ...>   use ExFSM
-      ...>   deftrans closed({:open_door,_},s) do {:next_state,:opened,s} end
+      ...>   deftrans closed({:open_door, _}, s), do: {:next_state, :opened, s}
       ...> end
+      ...>
       ...> defmodule Elixir.Door2 do
       ...>   use ExFSM
+      ...>
       ...>   @doc "allow multiple closes"
-      ...>   defbypass close_door(_,s), do: {:keep_state,Map.put(s,:doubleclosed,true)}
+      ...>   defbypass close_door(_, s), do: {:keep_state, Map.put(s, :doubleclosed, true)}
+      ...>
       ...>   @doc "standard door open"
-      ...>   deftrans opened({:close_door,_},s) do {:next_state,:closed,s} end
+      ...>   deftrans opened({:close_door, _}, s), do: {:next_state, :closed, s}
       ...> end
-      ...> ExFSM.Machine.fsm([Door1,Door2])
+      ...>
+      ...> ExFSM.Machine.fsm([Door1, Door2])
       %{
-        {:closed,:open_door}=>{Door1,[:opened]},
-        {:opened,:close_door}=>{Door2,[:closed]}
+        {:closed, :open_door} => {Door1, [:opened]},
+        {:opened, :close_door} => {Door2, [:closed]}
       }
-      iex> ExFSM.Machine.event_bypasses([Door1,Door2])
+      iex> ExFSM.Machine.event_bypasses([Door1, Door2])
       %{close_door: Door2}
-      iex> defmodule Elixir.DoorState do defstruct(handlers: [Door1,Door2], state: nil, doubleclosed: false) end
-      ...> defimpl ExFSM.Machine.State, for: DoorState do
-      ...>   def handlers(d) do d.handlers end
-      ...>   def state_name(d) do d.state end
-      ...>   def set_state_name(d,name) do %{d|state: name} end
+      iex> defmodule Elixir.DoorState do
+      ...>   defstruct(handlers: [Door1, Door2], state: nil, doubleclosed: false)
       ...> end
-      ...> struct(DoorState, state: :closed) |> ExFSM.Machine.event({:open_door,nil})
-      {:next_state,%{__struct__: DoorState, handlers: [Door1,Door2],state: :opened, doubleclosed: false}}
-      ...> struct(DoorState, state: :closed) |> ExFSM.Machine.event({:close_door,nil})
-      {:next_state,%{__struct__: DoorState, handlers: [Door1,Door2],state: :closed, doubleclosed: true}}
-      iex> ExFSM.Machine.find_info(struct(DoorState, state: :opened),:close_door)
-      {:known_transition,"standard door open"}
-      iex> ExFSM.Machine.find_info(struct(DoorState, state: :closed),:close_door)
-      {:bypass,"allow multiple closes"}
+      ...>
+      ...> defimpl ExFSM.Machine.State, for: DoorState do
+      ...>   def handlers(d), do: d.handlers
+      ...>
+      ...>   def state_name(d), do: d.state
+      ...>
+      ...>   def set_state_name(d, name), do: %{d | state: name}
+      ...> end
+      ...>
+      ...> struct(DoorState, state: :closed) |> ExFSM.Machine.event({:open_door, nil})
+      {:next_state, %{__struct__: DoorState, handlers: [Door1, Door2], state: :opened, doubleclosed: false}}
+      ...> struct(DoorState, state: :closed) |> ExFSM.Machine.event({:close_door, nil})
+      {:next_state, %{__struct__: DoorState, handlers: [Door1, Door2], state: :closed, doubleclosed: true}}
+      iex> ExFSM.Machine.find_info(struct(DoorState, state: :opened), :close_door)
+      {:known_transition, "standard door open"}
+      iex> ExFSM.Machine.find_info(struct(DoorState, state: :closed), :close_door)
+      {:bypass, "allow multiple closes"}
       iex> ExFSM.Machine.available_actions(struct(DoorState, state: :closed))
-      [:open_door,:close_door]
+      [:open_door, :close_door]
   """
 
   defprotocol State do
