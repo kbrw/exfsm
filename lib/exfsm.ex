@@ -53,22 +53,23 @@ defmodule ExFSM do
       {:transition_doc, :opened, :else} => nil,
       {:transition_doc, :opened, :open} => "Open to open"}
   """
+  alias ExFSM.State
 
-  @type state :: any
-  @type statename :: atom
-  @type eventname :: atom
+  @type trans :: atom
+  @type params :: term
   @type handler :: module
 
-  @type action :: {statename, eventname}
-  @type result :: {handler, [statename]}
-  @type spec :: %{action => result}
+  @type action :: {State.name(), trans}
+  @type result :: {handler, [State.name()]}
+  @type specs :: %{action => result}
+  @type bypasses :: %{trans => handler}
 
-  @type doc_key :: {:transition_doc, statename, eventname} | {:event_doc, eventname}
+  @type doc_key :: {:transition_doc, State.name(), trans} | {:event_doc, trans}
   @type doc :: String.t()
   @type docs :: %{doc_key => doc}
   @type info :: {:known_transition, doc} | {:bypass, doc}
 
-  @type transition :: ({eventname, params :: any}, state -> {:next_state, eventname, state})
+  @type transition :: ({trans, params}, State.t() -> {:next_state, trans, State.t()})
 
   defmacro __using__(_opts) do
     quote do
@@ -86,19 +87,19 @@ defmodule ExFSM do
       @doc """
       Returns this handler's FSM as `spec()`
       """
-      @spec fsm() :: spec()
+      @spec fsm() :: specs()
       def fsm, do: @fsm
 
       @doc """
       Returns this handler's FSM bypasses as `spec()`
       """
-      @spec event_bypasses() :: spec()
+      @spec event_bypasses() :: bypasses()
       def event_bypasses, do: @bypasses
 
       @doc """
       Returns this FSM's doc map
       """
-      @spec docs() :: map
+      @spec docs() :: docs()
       def docs, do: @docs
     end
   end
@@ -109,12 +110,12 @@ defmodule ExFSM do
   first argument. A state object can be modified and is the second argument.
 
   ```
-  deftrans opened({:close_door,_params},state) do
-    {:next_state,:closed,state}
+  deftrans opened({:close_door, _params}, state) do
+    {:next_state, :closed, state}
   end
   ```
   """
-  defmacro deftrans({state, _meta, [{trans, _param} | _rest]} = signature, body_block) do
+  defmacro deftrans({state, _meta, [{trans, _params} | _rest]} = signature, body_block) do
     quote do
       @fsm Map.put(
              @fsm,
@@ -128,11 +129,11 @@ defmodule ExFSM do
     end
   end
 
-  defmacro defbypass({event, _meta, _args} = signature, body_block) do
+  defmacro defbypass({trans, _meta, _args} = signature, body_block) do
     quote do
-      @bypasses Map.put(@bypasses, unquote(event), __MODULE__)
+      @bypasses Map.put(@bypasses, unquote(trans), __MODULE__)
       doc = Module.get_attribute(__MODULE__, :doc)
-      @docs Map.put(@docs, {:event_doc, unquote(event)}, doc)
+      @docs Map.put(@docs, {:event_doc, unquote(trans)}, doc)
       def unquote(signature), do: unquote(body_block[:do])
     end
   end
