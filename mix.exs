@@ -40,6 +40,8 @@ defmodule ExFSM.Mixfile do
 
   defp deps,
     do: [
-      {:ex_doc, ">= 0.0.0", only: :dev}
+      # Dev only
+      {:ex_doc, ">= 0.0.0", only: :dev},
+      {:credo, ">= 0.0.0", only: :dev}
     ]
 end

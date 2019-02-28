@@ -157,39 +157,14 @@ defmodule ExFSM.Machine do
   """
   @spec event(ExFSM.state(), {ExFSM.eventname(), term}) :: meta_event_reply
   def event(state, {action, params}) do
-    case find_handler({state, action}) do
+    {state, action}
+    |> find_handler()
+    |> case do
       nil ->
-        case find_bypass(state, action) do
-          nil ->
-            {:error, :illegal_action}
-
-          handler ->
-            case apply(handler, action, [params, state]) do
-              {:keep_state, state} ->
-                {:next_state, state}
-
-              {:next_state, state_name, state, timeout} ->
-                {:next_state, State.set_state_name(state, state_name), timeout}
-
-              {:next_state, state_name, state} ->
-                {:next_state, State.set_state_name(state, state_name)}
-
-              other ->
-                other
-            end
-        end
+        do_find_bypass(state, action, params)
 
       handler ->
-        case apply(handler, State.state_name(state), [{action, params}, state]) do
-          {:next_state, state_name, state, timeout} ->
-            {:next_state, State.set_state_name(state, state_name), timeout}
-
-          {:next_state, state_name, state} ->
-            {:next_state, State.set_state_name(state, state_name)}
-
-          other ->
-            other
-        end
+        do_apply_event(handler, state, action, params)
     end
   end
 
@@ -213,5 +188,49 @@ defmodule ExFSM.Machine do
   @spec action_available?(ExFSM.state(), ExFSM.eventname()) :: boolean
   def action_available?(state, action) do
     action in available_actions(state)
+  end
+
+  ###
+  ### Priv
+  ###
+  defp do_find_bypass(state, action, params) do
+    state
+    |> find_bypass(action)
+    |> case do
+      nil ->
+        {:error, :illegal_action}
+
+      handler ->
+        do_apply_bypass(handler, state, action, params)
+    end
+  end
+
+  defp do_apply_bypass(handler, state, action, params) do
+    case apply(handler, action, [params, state]) do
+      {:keep_state, state} ->
+        {:next_state, state}
+
+      {:next_state, state_name, state, timeout} ->
+        {:next_state, State.set_state_name(state, state_name), timeout}
+
+      {:next_state, state_name, state} ->
+        {:next_state, State.set_state_name(state, state_name)}
+
+      other ->
+        other
+    end
+  end
+
+  defp do_apply_event(handler, state, action, params) do
+    case apply(handler, State.state_name(state), [{action, params}, state]) do
+      {:next_state, state_name, state, timeout} ->
+        {:next_state, State.set_state_name(state, state_name), timeout}
+
+      {:next_state, state_name, state} ->
+        {:next_state, State.set_state_name(state, state_name)}
+
+      other ->
+        other
+    end
   end
 end
