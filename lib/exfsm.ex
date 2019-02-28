@@ -1,7 +1,7 @@
 defmodule ExFSM do
   @moduledoc """
   After `use ExFSM` : define FSM transition handler with `deftrans fromstate({action_name,params},state)`.
-  A function `fsm` will be created returning a map of the `fsm_spec` describing the fsm. 
+  A function `fsm` will be created returning a map of the `spec` describing the fsm. 
 
   Destination states are found with AST introspection, if the `{:next_state,xxx,xxx}` is defined
   outside the `deftrans/2` function, you have to define them manually defining a `@to` attribute.
@@ -54,10 +54,21 @@ defmodule ExFSM do
       {:transition_doc, :opened, :open} => "Open to open"}
   """
 
-  @type fsm_spec :: %{
-          {state_name :: atom, event_name :: atom} =>
-            {exfsm_module :: atom, [dest_statename :: atom]}
-        }
+  @type state :: any
+  @type statename :: atom
+  @type eventname :: atom
+  @type handler :: module
+
+  @type action :: {statename, eventname}
+  @type result :: {handler, [statename]}
+  @type spec :: %{action => result}
+
+  @type doc_key :: {:transition_doc, statename, eventname} | {:event_doc, eventname}
+  @type doc :: String.t()
+  @type docs :: %{doc_key => doc}
+  @type info :: {:known_transition, doc} | {:bypass, doc}
+
+  @type transition :: ({eventname, params :: any}, state -> {:next_state, eventname, state})
 
   defmacro __using__(_opts) do
     quote do
@@ -72,24 +83,37 @@ defmodule ExFSM do
 
   defmacro __before_compile__(_env) do
     quote do
+      @doc """
+      Returns this handler's FSM as `spec()`
+      """
+      @spec fsm() :: spec()
       def fsm, do: @fsm
+
+      @doc """
+      Returns this handler's FSM bypasses as `spec()`
+      """
+      @spec event_bypasses() :: spec()
       def event_bypasses, do: @bypasses
+
+      @doc """
+      Returns this FSM's doc map
+      """
+      @spec docs() :: map
       def docs, do: @docs
     end
   end
 
   @doc """
-    Define a function of type `transition` describing a state and its
-    transition. The function name is the state name, the transition is the
-    first argument. A state object can be modified and is the second argument.
+  Define a function of type `transition` describing a state and its
+  transition. The function name is the state name, the transition is the
+  first argument. A state object can be modified and is the second argument.
 
-        deftrans opened({:close_door,_params},state) do
-          {:next_state,:closed,state}
-        end
+  ```
+  deftrans opened({:close_door,_params},state) do
+    {:next_state,:closed,state}
+  end
+  ```
   """
-  @type transition ::
-          ({event_name :: atom, event_param :: any}, state :: any ->
-             {:next_state, event_name :: atom, state :: any})
   defmacro deftrans({state, _meta, [{trans, _param} | _rest]} = signature, body_block) do
     quote do
       @fsm Map.put(
@@ -104,12 +128,6 @@ defmodule ExFSM do
     end
   end
 
-  defp find_nextstates({:{}, _, [:next_state, state | _]}) when is_atom(state), do: [state]
-  defp find_nextstates({_, _, asts}), do: find_nextstates(asts)
-  defp find_nextstates({_, asts}), do: find_nextstates(asts)
-  defp find_nextstates(asts) when is_list(asts), do: Enum.flat_map(asts, &find_nextstates/1)
-  defp find_nextstates(_), do: []
-
   defmacro defbypass({event, _meta, _args} = signature, body_block) do
     quote do
       @bypasses Map.put(@bypasses, unquote(event), __MODULE__)
@@ -118,4 +136,13 @@ defmodule ExFSM do
       def unquote(signature), do: unquote(body_block[:do])
     end
   end
+
+  ###
+  ### Priv
+  ###
+  defp find_nextstates({:{}, _, [:next_state, state | _]}) when is_atom(state), do: [state]
+  defp find_nextstates({_, _, asts}), do: find_nextstates(asts)
+  defp find_nextstates({_, asts}), do: find_nextstates(asts)
+  defp find_nextstates(asts) when is_list(asts), do: Enum.flat_map(asts, &find_nextstates/1)
+  defp find_nextstates(_), do: []
 end

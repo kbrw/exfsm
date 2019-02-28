@@ -56,34 +56,44 @@ defmodule ExFSM.Machine do
       iex> ExFSM.Machine.available_actions(struct(DoorState, state: :closed))
       [:open_door, :close_door]
   """
+  @type meta_event_reply ::
+          {:next_state, ExFSM.state()}
+          | {:next_state, ExFSM.state(), timeout :: integer}
+          | {:error, :illegal_action}
 
   defprotocol State do
     @doc """
     Retrieve current state handlers from state object, return [Handler1,Handler2]
     """
+    @spec handlers(ExFSM.state()) :: [ExFSM.handler()]
     def handlers(state)
 
     @doc """
     Retrieve current state name from state object
     """
+    @spec state_name(ExFSM.state()) :: ExFSM.statename()
     def state_name(state)
 
     @doc """
     Set new state name
     """
+    @spec set_state_name(ExFSM.state(), ExFSM.statename()) :: ExFSM.state()
     def set_state_name(state, state_name)
   end
 
   @doc """
-  Return the FSM as a map of transitions
-  %{{state,action}=>{handler,[dest_states]}} based on handlers
+  Returns `ExFSM.spec()` built from all handlers
   """
-  @spec fsm([exfsm_module :: atom]) :: ExFSM.fsm_spec()
+  @spec fsm([ExFSM.handler()] | ExFSM.state()) :: ExFSM.spec()
   def fsm(handlers) when is_list(handlers),
     do: handlers |> Enum.map(& &1.fsm) |> Enum.concat() |> Enum.into(%{})
 
   def fsm(state), do: fsm(State.handlers(state))
 
+  @doc """
+  Returns `ExFSM.spec()` with only bypasses specs
+  """
+  @spec event_bypasses([ExFSM.handler()] | ExFSM.state()) :: ExFSM.spec()
   def event_bypasses(handlers) when is_list(handlers),
     do: handlers |> Enum.map(& &1.event_bypasses) |> Enum.concat() |> Enum.into(%{})
 
@@ -93,8 +103,8 @@ defmodule ExFSM.Machine do
   Find the ExFSM Module from the list `handlers` implementing the
   event `action` from `state_name`
   """
-  @spec find_handler({state_name :: atom, event_name :: atom}, [exfsm_module :: atom]) ::
-          exfsm_module :: atom
+  @spec find_handler({ExFSM.statename(), ExFSM.eventname()}, [ExFSM.handler()]) ::
+          ExFSM.handler() | nil
   def find_handler({state_name, action}, handlers) when is_list(handlers) do
     case Map.get(fsm(handlers), {state_name, action}) do
       {handler, _} -> handler
@@ -106,18 +116,31 @@ defmodule ExFSM.Machine do
   Same as `find_handler/2` but using a 'meta' state implementing
   `ExFSM.Machine.State`
   """
+  @spec find_handler([ExFSM.handler()] | ExFSM.state()) :: ExFSM.handler() | nil
   def find_handler({state, action}),
     do: find_handler({State.state_name(state), action}, State.handlers(state))
 
+  @doc """
+  Find bypass
+  """
+  @spec find_bypass([ExFSM.handler()] | ExFSM.state(), ExFSM.action()) :: ExFSM.result() | nil
   def find_bypass(handlers_or_state, action) do
     event_bypasses(handlers_or_state)[action]
   end
 
+  @doc """
+  Returns global doc
+  """
+  @spec infos([ExFSM.handler()] | ExFSM.state(), ExFSM.action()) :: ExFSM.docs()
   def infos(handlers, _action) when is_list(handlers),
     do: handlers |> Enum.map(& &1.docs) |> Enum.concat() |> Enum.into(%{})
 
   def infos(state, action), do: infos(State.handlers(state), action)
 
+  @doc """
+  Returns info for particular action
+  """
+  @spec find_info(ExFSM.state(), ExFSM.action()) :: ExFSM.info() | nil
   def find_info(state, action) do
     docs = infos(state, action)
 
@@ -132,12 +155,7 @@ defmodule ExFSM.Machine do
   Meta application of the transition function, using `find_handler/2`
   to find the module implementing it.
   """
-  @type meta_event_reply ::
-          {:next_state, ExFSM.Machine.State.t()}
-          | {:next_state, ExFSM.Machine.State.t(), timeout :: integer}
-          | {:error, :illegal_action}
-  @spec event(ExFSM.Machine.State.t(), {event_name :: atom, event_params :: any}) ::
-          meta_event_reply
+  @spec event(ExFSM.state(), {ExFSM.eventname(), term}) :: meta_event_reply
   def event(state, {action, params}) do
     case find_handler({state, action}) do
       nil ->
@@ -175,7 +193,10 @@ defmodule ExFSM.Machine do
     end
   end
 
-  @spec available_actions(ExFSM.Machine.State.t()) :: [action_name :: atom]
+  @doc """
+  Returns available actions
+  """
+  @spec available_actions(ExFSM.state()) :: [ExFSM.eventname()]
   def available_actions(state) do
     fsm_actions =
       ExFSM.Machine.fsm(state)
@@ -186,7 +207,10 @@ defmodule ExFSM.Machine do
     Enum.uniq(fsm_actions ++ bypasses_actions)
   end
 
-  @spec action_available?(ExFSM.Machine.State.t(), action_name :: atom) :: boolean
+  @doc """
+  Returns true if given action is available
+  """
+  @spec action_available?(ExFSM.state(), ExFSM.eventname()) :: boolean
   def action_available?(state, action) do
     action in available_actions(state)
   end
