@@ -174,11 +174,16 @@ defmodule ExFSM.Machine do
   @spec available_actions(ExFSM.state()) :: [ExFSM.eventname()]
   def available_actions(state) do
     fsm_actions =
-      ExFSM.Machine.fsm(state)
+      state
+      |> ExFSM.Machine.fsm()
       |> Enum.filter(fn {{from, _}, _} -> from == State.state_name(state) end)
       |> Enum.map(fn {{_, action}, _} -> action end)
 
-    bypasses_actions = ExFSM.Machine.event_bypasses(state) |> Map.keys()
+    bypasses_actions =
+      state
+      |> ExFSM.Machine.event_bypasses()
+      |> Map.keys()
+
     Enum.uniq(fsm_actions ++ bypasses_actions)
   end
 
