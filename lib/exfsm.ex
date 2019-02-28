@@ -8,50 +8,56 @@ defmodule ExFSM do
 
   For instance : 
 
-    iex> defmodule Elixir.Door do
-    ...>   use ExFSM
-    ...> 
-    ...>   @doc "Close to open"
-    ...>   @to [:opened]
-    ...>   deftrans closed({:open, _}, s) do
-    ...>     {:next_state, :opened, s}
-    ...>   end
-    ...> 
-    ...>   @doc "Close to close"
-    ...>   deftrans closed({:close, _}, s) do
-    ...>     {:next_state, :closed, s}
-    ...>   end
-    ...> 
-    ...>   deftrans closed({:else, _}, s) do
-    ...>     {:next_state, :closed, s}
-    ...>   end
-    ...> 
-    ...>   @doc "Open to open"
-    ...>   deftrans opened({:open, _}, s) do
-    ...>     {:next_state, :opened, s}
-    ...>   end
-    ...> 
-    ...>   @doc "Open to close"
-    ...>   @to [:closed]
-    ...>   deftrans opened({:close, _}, s) do
-    ...>     {:next_state, :closed, s}
-    ...>   end
-    ...> 
-    ...>   deftrans opened({:else, _}, s) do
-    ...>     {:next_state, :opened, s}
-    ...>   end
-    ...> end
-    ...> Door.fsm
-    %{{:closed, :close} => {Door, [:closed]}, {:closed, :else} => {Door, [:closed]},
-      {:closed, :open} => {Door, [:opened]}, {:opened, :close} => {Door, [:closed]},
-      {:opened, :else} => {Door, [:opened]}, {:opened, :open} => {Door, [:opened]}}
-    iex> Door.docs
-    %{{:transition_doc, :closed, :close} => "Close to close",
-      {:transition_doc, :closed, :else} => nil,
-      {:transition_doc, :closed, :open} => "Close to open",
-      {:transition_doc, :opened, :close} => "Open to close",
-      {:transition_doc, :opened, :else} => nil,
-      {:transition_doc, :opened, :open} => "Open to open"}
+      iex> defmodule Elixir.Door do
+      ...>   use ExFSM
+      ...> 
+      ...>   @doc "Close to open"
+      ...>   @to [:opened]
+      ...>   deftrans closed({:open, _}, s) do
+      ...>     {:next_state, :opened, s}
+      ...>   end
+      ...> 
+      ...>   @doc "Close to close"
+      ...>   deftrans closed({:close, _}, s) do
+      ...>     {:next_state, :closed, s}
+      ...>   end
+      ...> 
+      ...>   deftrans closed({:else, _}, s) do
+      ...>     {:next_state, :closed, s}
+      ...>   end
+      ...> 
+      ...>   @doc "Open to open"
+      ...>   deftrans opened({:open, _}, s) do
+      ...>     {:next_state, :opened, s}
+      ...>   end
+      ...> 
+      ...>   @doc "Open to close"
+      ...>   @to [:closed]
+      ...>   deftrans opened({:close, _}, s) do
+      ...>     {:next_state, :closed, s}
+      ...>   end
+      ...> 
+      ...>   deftrans opened({:else, _}, s) do
+      ...>     {:next_state, :opened, s}
+      ...>   end
+      ...> end
+      ...> Door.fsm
+      %{
+        {:closed, :close} => {Door, [:closed]}, {:closed, :else} => {Door, [:closed]},
+        {:closed, :open} => {Door, [:opened]}, {:opened, :close} => {Door, [:closed]},
+        {:opened, :else} => {Door, [:opened]}, {:opened, :open} => {Door, [:opened]}
+      }
+
+      iex> Door.docs
+      %{
+        {:transition_doc, :closed, :close} => "Close to close",
+        {:transition_doc, :closed, :else} => nil,
+        {:transition_doc, :closed, :open} => "Close to open",
+        {:transition_doc, :opened, :close} => "Open to close",
+        {:transition_doc, :opened, :else} => nil,
+        {:transition_doc, :opened, :open} => "Open to open"
+      }
+
   """
   alias ExFSM.State
 
@@ -137,6 +143,9 @@ defmodule ExFSM do
     end
   end
 
+  @doc """
+  Define a function of type `bypass`, ie which can be applied on any state
+  """
   defmacro defbypass({trans, _meta, _args} = signature, body_block) do
     quote do
       @bypasses Map.put(@bypasses, unquote(trans), __MODULE__)
