@@ -87,19 +87,19 @@ defmodule ExFSM do
       @doc """
       Returns this handler's FSM as `spec()`
       """
-      @spec fsm() :: specs()
+      @spec fsm() :: ExFSM.specs()
       def fsm, do: @fsm
 
       @doc """
       Returns this handler's FSM bypasses as `spec()`
       """
-      @spec event_bypasses() :: bypasses()
+      @spec event_bypasses() :: ExFSM.bypasses()
       def event_bypasses, do: @bypasses
 
       @doc """
       Returns this FSM's doc map
       """
-      @spec docs() :: docs()
+      @spec docs() :: ExFSM.docs()
       def docs, do: @docs
     end
   end
@@ -122,7 +122,15 @@ defmodule ExFSM do
              {unquote(state), unquote(trans)},
              {__MODULE__, @to || unquote(Enum.uniq(find_nextstates(body_block[:do])))}
            )
-      doc = Module.get_attribute(__MODULE__, :doc)
+      doc =
+        __MODULE__
+        |> Module.get_attribute(:doc)
+        |> case do
+          nil -> nil
+          {_line, doc} -> doc
+          doc when is_binary(doc) -> doc
+        end
+
       @docs Map.put(@docs, {:transition_doc, unquote(state), unquote(trans)}, doc)
       def unquote(signature), do: unquote(body_block[:do])
       @to nil
@@ -132,7 +140,15 @@ defmodule ExFSM do
   defmacro defbypass({trans, _meta, _args} = signature, body_block) do
     quote do
       @bypasses Map.put(@bypasses, unquote(trans), __MODULE__)
-      doc = Module.get_attribute(__MODULE__, :doc)
+      doc =
+        __MODULE__
+        |> Module.get_attribute(:doc)
+        |> case do
+          nil -> nil
+          {_line, doc} -> doc
+          doc when is_binary(doc) -> doc
+        end
+
       @docs Map.put(@docs, {:event_doc, unquote(trans)}, doc)
       def unquote(signature), do: unquote(body_block[:do])
     end
