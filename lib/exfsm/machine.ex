@@ -58,10 +58,11 @@ defmodule ExFSM.Machine do
   """
   alias ExFSM.Machine.State
 
+  @type meta_event_error :: :illegal_action | term
   @type meta_event_reply ::
           {:next_state, State.t()}
           | {:next_state, State.t(), timeout :: integer}
-          | {:error, :illegal_action}
+          | {:error, meta_event_error}
 
   @doc """
   Returns `ExFSM.specs()` built from all handlers
@@ -212,7 +213,15 @@ defmodule ExFSM.Machine do
   end
 
   defp do_apply_bypass(handler, state, action, params) do
-    case apply(handler, action, [params, state]) do
+    res =
+      try do
+        apply(handler, action, [params, state])
+      rescue
+        FunctionClauseError ->
+          {:error, :illegal_action}
+      end
+
+    case res do
       {:keep_state, state} ->
         {:next_state, state}
 
@@ -222,7 +231,7 @@ defmodule ExFSM.Machine do
       {:next_state, state_name, state} ->
         {:next_state, State.set_state_name(state, state_name)}
 
-      {:error, :illegal_action} = e ->
+      {:error, _} = e ->
         e
 
       _other ->
@@ -234,14 +243,22 @@ defmodule ExFSM.Machine do
   defp do_apply_event(handler, state, action, params) do
     orig = State.state_name(state)
 
-    case apply(handler, orig, [{action, params}, state]) do
+    res =
+      try do
+        apply(handler, orig, [{action, params}, state])
+      rescue
+        FunctionClauseError ->
+          {:error, :illegal_action}
+      end
+
+    case res do
       {:next_state, state_name, state, timeout} when is_integer(timeout) ->
         {:next_state, State.set_state_name(state, state_name), timeout}
 
       {:next_state, state_name, state} ->
         {:next_state, State.set_state_name(state, state_name)}
 
-      {:error, :illegal_action} = e ->
+      {:error, _} = e ->
         e
 
       _other ->
