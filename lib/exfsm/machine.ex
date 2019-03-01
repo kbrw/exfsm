@@ -62,6 +62,7 @@ defmodule ExFSM.Machine do
   @type meta_event_reply ::
           {:next_state, State.t()}
           | {:next_state, State.t(), timeout :: integer}
+          | {:keep_state, State.t()}
           | {:error, meta_event_error}
 
   @doc """
