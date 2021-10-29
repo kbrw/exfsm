@@ -16,3 +16,9 @@ Simple elixir library to define composable FSM as function
 ## Usage ##
 
 See in [in code documentation](http://hexdocs.pm/exfsm)
+
+# CONTRIBUTING
+
+Hi, and thank you for wanting to contribute.
+Please refer to the centralized informations available at: https://github.com/kbrw\#contributing
+
