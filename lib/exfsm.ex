@@ -84,15 +84,58 @@ defmodule ExFSM do
           {:next_state,:closed,state}
         end
   """
-  @type transition :: (({event_name :: atom, event_param :: any},state :: any) -> {:next_state,event_name :: atom,state :: any})
-  defmacro deftrans({state,_meta,[{trans,_param}|_rest]}=signature, body_block) do
+#  @type transition :: (({event_name :: atom, event_param :: any},state :: any) -> {:next_state,event_name :: atom,state :: any})
+#  defmacro deftrans({state,_meta,[{trans,_param}|_rest]}=signature, body_block) do
+#    quote do
+#      @fsm Map.put(@fsm,{unquote(state),unquote(trans)},{__MODULE__,@to || unquote(Enum.uniq(find_nextstates(body_block[:do])))})
+#      doc = Module.get_attribute(__MODULE__, :doc)
+#      @docs Map.put(@docs,{:transition_doc,unquote(state),unquote(trans)},doc)
+#      def unquote(signature), do: unquote(body_block[:do])
+#      @to nil
+#    end
+#  end
+
+  defmacro deftrans(signature, do: body) do
+    transition_ast(signature, body)
+    |> cleanup_to()
+  end
+
+  defmacro defmultitrans(signature, do: body) do
+    Enum.map(transpose(signature), &transition_ast(&1, body))
+    |> cleanup_to()
+  end
+
+  @doc false
+  # states to transitions
+  def transpose(signature) do
+    {transition, meta, params} = signature
+    [{states, input}, object] = params
+    Enum.map(states, fn state ->
+      {state, meta, [{transition, input}, object]}
+    end)
+  end
+
+  @doc false
+  # Define the function for the transition, as well as it's metadatas
+  def transition_ast(signature, body) do
+    {state, _meta, params} = signature
+    [{transition, _param}, _object] = params
     quote do
-      @fsm Map.put(@fsm,{unquote(state),unquote(trans)},{__MODULE__,@to || unquote(Enum.uniq(find_nextstates(body_block[:do])))})
+      @fsm Map.put(@fsm, {unquote(state), unquote(transition)}, {__MODULE__, @to || unquote(Enum.uniq(find_nextstates(body)))})
       doc = Module.get_attribute(__MODULE__, :doc)
-      @docs Map.put(@docs,{:transition_doc,unquote(state),unquote(trans)},doc)
-      def unquote(signature), do: unquote(body_block[:do])
+      # I don't really understand why we don't directly use @doc
+      @docs Map.put(@docs, {:transition_doc, unquote(state), unquote(transition)}, doc)
+      def unquote(signature), do: unquote(body)
+    end
+  end
+
+  @doc false
+  # Remove the @to for the next transition definitions
+  def cleanup_to(ast) do
+    quote do
+      unquote(ast)
       @to nil
-    end  
+    end
   end
 
   defp find_nextstates({:{},_,[:next_state,state|_]}) when is_atom(state), do: [state]
@@ -101,36 +144,28 @@ defmodule ExFSM do
   defp find_nextstates(asts) when is_list(asts), do: Enum.flat_map(asts,&find_nextstates/1)
   defp find_nextstates(_), do: []
 
-  defmacro defbypass({event,_meta,_args}=signature,body_block) do 
+  defmacro defbypass({event,_meta,_args}=signature,body_block) do
     quote do
       @bypasses Map.put(@bypasses,unquote(event),__MODULE__)
       doc = Module.get_attribute(__MODULE__, :doc)
       @docs Map.put(@docs,{:event_doc,unquote(event)},doc)
       def unquote(signature), do: unquote(body_block[:do])
-    end 
-  end
-
-  @doc """
-    Define a function of type `multitransition` describing a transition and its
-    different states or not. The function name is the transition name, the mode (:excluded or :included) is the
-    first argument with a list of the states linked to this mode. A state object can be modified and is the second argument.
-        defmultitrans refund({:included, [:payed, :shipped, :partially_shipped], _}, order) do
-          {:next_state, :refunded, order}
-        end
-  """
-  defmacro defmultitrans({event,_meta,[{_, _, [mode, states, _params]}| _rest]}=signature,body_block) do
-    quote do
-      @multitrans Map.put(@multitrans,{unquote(event), unquote(states), unquote(mode)},__MODULE__)
-      doc = Module.get_attribute(__MODULE__, :doc)
-      @docs Map.put(@docs,{:event_doc,unquote(event)},doc)
-      def unquote(signature), do: unquote(body_block[:do])
     end
   end
+
+#  defmacro defmultitrans({event,_meta,[{_, _, [mode, states, _params]}| _rest]}=signature,body_block) do
+#    quote do
+#      @multitrans Map.put(@multitrans,{unquote(event), unquote(states), unquote(mode)},__MODULE__)
+#      doc = Module.get_attribute(__MODULE__, :doc)
+#      @docs Map.put(@docs,{:event_doc,unquote(event)},doc)
+#      def unquote(signature), do: unquote(body_block[:do])
+#    end
+#  end
 end
 
 defmodule ExFSM.Machine do
   @moduledoc """
-  Module to simply use FSMs defined with ExFSM : 
+  Module to simply use FSMs defined with ExFSM :
 
   - `ExFSM.Machine.fsm/1` merge fsm from multiple handlers (see `ExFSM` to see how to define one).
   - `ExFSM.Machine.event_bypasses/1` merge bypasses from multiple handlers (see `ExFSM` to see how to define one).
@@ -236,7 +271,7 @@ defmodule ExFSM.Machine do
 
   def infos(handlers,_action) when is_list(handlers), do:
     (handlers |> Enum.map(&(&1.docs)) |> Enum.concat |> Enum.into(%{}))
-  def infos(state,action), do: 
+  def infos(state,action), do:
     infos(State.handlers(state),action)
 
   def find_info(state,action) do
@@ -285,7 +320,7 @@ defmodule ExFSM.Machine do
 
   @spec available_actions(ExFSM.Machine.State.t) :: [action_name :: atom]
   def available_actions(state) do
-    fsm_actions = ExFSM.Machine.fsm(state) 
+    fsm_actions = ExFSM.Machine.fsm(state)
       |> Enum.filter(fn {{from,_},_}->from==State.state_name(state) end)
       |> Enum.map(fn {{_,action},_}->action end)
     bypasses_actions = ExFSM.Machine.event_bypasses(state) |> Map.keys
