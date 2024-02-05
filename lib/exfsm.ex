@@ -59,6 +59,7 @@ defmodule ExFSM do
     quote do
       import ExFSM
       @fsm %{}
+      @multitrans %{}
       @bypasses %{}
       @docs %{}
       @to nil
@@ -68,6 +69,7 @@ defmodule ExFSM do
   defmacro __before_compile__(_env) do
     quote do
       def fsm, do: @fsm
+      def event_multitrans, do: @multitrans
       def event_bypasses, do: @bypasses
       def docs, do: @docs
     end
@@ -82,15 +84,58 @@ defmodule ExFSM do
           {:next_state,:closed,state}
         end
   """
-  @type transition :: (({event_name :: atom, event_param :: any},state :: any) -> {:next_state,event_name :: atom,state :: any})
-  defmacro deftrans({state,_meta,[{trans,_param}|_rest]}=signature, body_block) do
+#  @type transition :: (({event_name :: atom, event_param :: any},state :: any) -> {:next_state,event_name :: atom,state :: any})
+#  defmacro deftrans({state,_meta,[{trans,_param}|_rest]}=signature, body_block) do
+#    quote do
+#      @fsm Map.put(@fsm,{unquote(state),unquote(trans)},{__MODULE__,@to || unquote(Enum.uniq(find_nextstates(body_block[:do])))})
+#      doc = Module.get_attribute(__MODULE__, :doc)
+#      @docs Map.put(@docs,{:transition_doc,unquote(state),unquote(trans)},doc)
+#      def unquote(signature), do: unquote(body_block[:do])
+#      @to nil
+#    end
+#  end
+
+  defmacro deftrans(signature, do: body) do
+    transition_ast(signature, body)
+    |> cleanup_to()
+  end
+
+  defmacro defmultitrans(signature, do: body) do
+    Enum.map(transpose(signature), &transition_ast(&1, body))
+    |> cleanup_to()
+  end
+
+  @doc false
+  # states to transitions
+  def transpose(signature) do
+    {transition, meta, params} = signature
+    [{states, input}, object] = params
+    Enum.map(states, fn state ->
+      {state, meta, [{transition, input}, object]}
+    end)
+  end
+
+  @doc false
+  # Define the function for the transition, as well as it's metadatas
+  def transition_ast(signature, body) do
+    {state, _meta, params} = signature
+    [{transition, _param}, _object] = params
     quote do
-      @fsm Map.put(@fsm,{unquote(state),unquote(trans)},{__MODULE__,@to || unquote(Enum.uniq(find_nextstates(body_block[:do])))})
+      @fsm Map.put(@fsm, {unquote(state), unquote(transition)}, {__MODULE__, @to || unquote(Enum.uniq(find_nextstates(body)))})
       doc = Module.get_attribute(__MODULE__, :doc)
-      @docs Map.put(@docs,{:transition_doc,unquote(state),unquote(trans)},doc)
-      def unquote(signature), do: unquote(body_block[:do])
+      # I don't really understand why we don't directly use @doc
+      @docs Map.put(@docs, {:transition_doc, unquote(state), unquote(transition)}, doc)
+      def unquote(signature), do: unquote(body)
+    end
+  end
+
+  @doc false
+  # Remove the @to for the next transition definitions
+  def cleanup_to(ast) do
+    quote do
+      unquote(ast)
       @to nil
-    end  
+    end
   end
 
   defp find_nextstates({:{},_,[:next_state,state|_]}) when is_atom(state), do: [state]
@@ -99,19 +144,28 @@ defmodule ExFSM do
   defp find_nextstates(asts) when is_list(asts), do: Enum.flat_map(asts,&find_nextstates/1)
   defp find_nextstates(_), do: []
 
-  defmacro defbypass({event,_meta,_args}=signature,body_block) do 
+  defmacro defbypass({event,_meta,_args}=signature,body_block) do
     quote do
       @bypasses Map.put(@bypasses,unquote(event),__MODULE__)
       doc = Module.get_attribute(__MODULE__, :doc)
       @docs Map.put(@docs,{:event_doc,unquote(event)},doc)
       def unquote(signature), do: unquote(body_block[:do])
-    end 
+    end
   end
+
+#  defmacro defmultitrans({event,_meta,[{_, _, [mode, states, _params]}| _rest]}=signature,body_block) do
+#    quote do
+#      @multitrans Map.put(@multitrans,{unquote(event), unquote(states), unquote(mode)},__MODULE__)
+#      doc = Module.get_attribute(__MODULE__, :doc)
+#      @docs Map.put(@docs,{:event_doc,unquote(event)},doc)
+#      def unquote(signature), do: unquote(body_block[:do])
+#    end
+#  end
 end
 
 defmodule ExFSM.Machine do
   @moduledoc """
-  Module to simply use FSMs defined with ExFSM : 
+  Module to simply use FSMs defined with ExFSM :
 
   - `ExFSM.Machine.fsm/1` merge fsm from multiple handlers (see `ExFSM` to see how to define one).
   - `ExFSM.Machine.event_bypasses/1` merge bypasses from multiple handlers (see `ExFSM` to see how to define one).
@@ -179,6 +233,11 @@ defmodule ExFSM.Machine do
   def event_bypasses(state), do:
     event_bypasses(State.handlers(state))
 
+  def event_multitrans(handlers) when is_list(handlers), do:
+    (handlers |> Enum.map(&(&1.event_multitrans)) |> Enum.concat |> Enum.into(%{}))
+  def event_multitrans(state), do:
+    event_multitrans(State.handlers(state))
+
   @doc "find the ExFSM Module from the list `handlers` implementing the event `action` from `state_name`"
   @spec find_handler({state_name::atom,event_name::atom},[exfsm_module :: atom]) :: exfsm_module :: atom
   def find_handler({state_name,action},handlers) when is_list(handlers) do
@@ -187,6 +246,17 @@ defmodule ExFSM.Machine do
       _ -> nil
     end
   end
+
+  def find_multitrans({state_name,action},handlers) when is_list(handlers) do
+    case Enum.find(event_multitrans(handlers), fn
+      {{this_action, states, :included}, _} -> this_action == action and state_name in states
+      {{this_action, states, :excluded}, _} -> this_action == action and state_name not in states
+    end) do
+      {{_, states, mode},handler}-> {states, handler, mode}
+      _ -> nil
+    end
+  end
+
   @doc "same as `find_handler/2` but using a 'meta' state implementing `ExFSM.Machine.State`"
   def find_handler({state,action}), do:
     find_handler({State.state_name(state),action},State.handlers(state))
@@ -195,9 +265,13 @@ defmodule ExFSM.Machine do
     event_bypasses(handlers_or_state)[action]
   end
 
+  def find_multitrans({state, action}) do
+    find_multitrans({State.state_name(state),action},State.handlers(state))
+  end
+
   def infos(handlers,_action) when is_list(handlers), do:
     (handlers |> Enum.map(&(&1.docs)) |> Enum.concat |> Enum.into(%{}))
-  def infos(state,action), do: 
+  def infos(state,action), do:
     infos(State.handlers(state),action)
 
   def find_info(state,action) do
@@ -214,10 +288,21 @@ defmodule ExFSM.Machine do
   @spec event(ExFSM.Machine.State.t,{event_name :: atom, event_params :: any}) :: meta_event_reply
   def event(state,{action,params}) do
     case find_handler({state,action}) do
-      nil -> 
-        case find_bypass(state,action) do
-          nil-> {:error,:illegal_action}
-          handler-> case apply(handler,action,[params,state]) do
+      nil ->
+        case find_multitrans({state, action}) do
+          nil ->
+            case find_bypass(state, action) do
+              nil -> {:error,:illegal_action}
+              handler ->
+                case apply(handler,action,[params,state]) do
+                  {:keep_state,state}->{:next_state,state}
+                  {:next_state,state_name,state,timeout} -> {:next_state,State.set_state_name(state,state_name),timeout}
+                  {:next_state,state_name,state} -> {:next_state,State.set_state_name(state,state_name)}
+                  other -> other
+                end
+            end
+          {states, handler, mode} ->
+            case apply(handler,action,[{mode,states,params},state]) do
               {:keep_state,state}->{:next_state,state}
               {:next_state,state_name,state,timeout} -> {:next_state,State.set_state_name(state,state_name),timeout}
               {:next_state,state_name,state} -> {:next_state,State.set_state_name(state,state_name)}
@@ -235,11 +320,17 @@ defmodule ExFSM.Machine do
 
   @spec available_actions(ExFSM.Machine.State.t) :: [action_name :: atom]
   def available_actions(state) do
-    fsm_actions = ExFSM.Machine.fsm(state) 
+    fsm_actions = ExFSM.Machine.fsm(state)
       |> Enum.filter(fn {{from,_},_}->from==State.state_name(state) end)
       |> Enum.map(fn {{_,action},_}->action end)
     bypasses_actions = ExFSM.Machine.event_bypasses(state) |> Map.keys
-    Enum.uniq(fsm_actions ++ bypasses_actions)
+    multitrans_actions = ExFSM.Machine.event_multitrans(state)
+      |> Enum.filter(fn
+        {{_,from,:included},_}->State.state_name(state) in from
+        {{_,from,:excluded},_}->State.state_name(state) not in from
+      end)
+      |> Enum.map(fn {{action,_,_},_}->action end)
+    Enum.uniq(fsm_actions ++ bypasses_actions ++ multitrans_actions)
   end
 
   @spec action_available?(ExFSM.Machine.State.t,action_name :: atom) :: boolean
