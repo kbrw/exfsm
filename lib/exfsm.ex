@@ -170,12 +170,12 @@ defmodule ExFSM.Machine do
   @doc "return the FSM as a map of transitions %{{state,action}=>{handler,[dest_states]}} based on handlers"
   @spec fsm([exfsm_module :: atom]) :: ExFSM.fsm_spec
   def fsm(handlers) when is_list(handlers), do:
-    (handlers |> Enum.map(&(&1.fsm)) |> Enum.concat |> Enum.into(%{}))
+    (handlers |> Enum.map(&(&1.fsm())) |> Enum.concat |> Enum.into(%{}))
   def fsm(state), do:
     fsm(State.handlers(state))
 
   def event_bypasses(handlers) when is_list(handlers), do:
-    (handlers |> Enum.map(&(&1.event_bypasses)) |> Enum.concat |> Enum.into(%{}))
+    (handlers |> Enum.map(&(&1.event_bypasses())) |> Enum.concat |> Enum.into(%{}))
   def event_bypasses(state), do:
     event_bypasses(State.handlers(state))
 
@@ -196,7 +196,7 @@ defmodule ExFSM.Machine do
   end
 
   def infos(handlers,_action) when is_list(handlers), do:
-    (handlers |> Enum.map(&(&1.docs)) |> Enum.concat |> Enum.into(%{}))
+    (handlers |> Enum.map(&(&1.docs())) |> Enum.concat |> Enum.into(%{}))
   def infos(state,action), do: 
     infos(State.handlers(state),action)
 
