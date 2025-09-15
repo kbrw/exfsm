@@ -5,7 +5,12 @@ defmodule ExFSM.Mixfile do
     [
       app: :exfsm,
       version: "0.1.6",
-      elixir: ">= 1.2.0",
+      elixir:
+        if Mix.env() == :dev do
+          ">= 1.15.0"
+        else
+          ">= 1.11.0"
+        end,
       build_embedded: Mix.env() == :prod,
       consolidate_protocols: Mix.env() != :test,
       docs: [
