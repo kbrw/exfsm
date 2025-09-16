@@ -15,7 +15,7 @@ defmodule ExFSM.Mixfile do
       consolidate_protocols: Mix.env() != :test,
       docs: [
         main: "ExFSM",
-        source_url: "https://github.com/kbrw/exfsm",
+        source_url: "https://github.com/kbrw/exfsm/tree/v0.1.6",
         source_ref: "master"
       ],
       description: """
