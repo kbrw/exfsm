@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   importing the dependency in your `.formatter.exs` file.
 - Macros `deftrans` and `defbypass` now supports `when` clause.
 
+
+### Fixed
+
+- Detect output states from transition with multiple function heads correctly
+  which fixes the returned output state of the `fsm/0` function.
+
 ### Changed
 
 - **BREAKING**: the reserved Elixir `@doc` attribute used to add documentation

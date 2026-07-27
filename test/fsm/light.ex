@@ -1,10 +1,11 @@
 defmodule ExFSM.Test.FSM.Light.State do
   @type t :: %__MODULE__{
+          max_usage: non_neg_integer(),
           usage: non_neg_integer(),
           state: atom()
         }
 
-  @enforced_keys [:state, :usage]
+  @enforced_keys [:max_usage, :state, :usage]
   defstruct @enforced_keys
 end
 
@@ -17,15 +18,23 @@ end
 defmodule ExFSM.Test.FSM.Light do
   use ExFSM
 
-  deftrans on({:off, _}, state) do
+  deftrans on({:off, :with_hand}, state) do
     {:next_state, :off, state}
+  end
+
+  deftrans on({:off, :with_water}, state) do
+    {:next_state, :broken, state}
+  end
+
+  deftrans on({:on, :with_force}, state) do
+    {:next_state, :broken, state}
   end
 
   deftrans on({:on, _}, _) do
     {:error, :already_on}
   end
 
-  deftrans off({:on, _}, state) when state.usage > 0 do
+  deftrans off({:on, _}, state) when state.usage >= state.max_usage do
     {:next_state, :broken, state}
   end
 

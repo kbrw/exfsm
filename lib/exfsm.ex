@@ -110,10 +110,18 @@ defmodule ExFSM do
       end
 
     quote do
-      @fsm Map.put(
+      output_states =
+        if is_list(@to),
+          do: @to,
+          else: unquote(Enum.uniq(find_nextstates(body_block[:do])))
+
+      @fsm Map.update(
              @fsm,
              {unquote(state), unquote(transition)},
-             {__MODULE__, @to || unquote(Enum.uniq(find_nextstates(body_block[:do])))}
+             {__MODULE__, output_states},
+             fn {module, prev_output_state} ->
+               {module, Enum.uniq(prev_output_state ++ output_states)}
+             end
            )
       doc = Module.get_attribute(__MODULE__, :transition_doc)
       @docs Map.put(@docs, {:transition_doc, unquote(state), unquote(transition)}, doc)
