@@ -12,3 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Macros `deftrans` and `defbypass` are now usable without parenthesis when
   importing the dependency in your `.formatter.exs` file.
 - Macros `deftrans` and `defbypass` now supports `when` clause.
+
+### Changed
+
+- **BREAKING**: the reserved Elixir `@doc` attribute used to add documentation
+  transitions and bypasses was removed as it emitted warnings when used on
+  a transition or bypasss with several heads. Instead use the `@transition_doc`
+  for transition and the `@bypass_doc` for bypasses.
