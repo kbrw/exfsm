@@ -11,6 +11,7 @@ defmodule ExFSM.Mixfile do
         else
           ">= 1.11.0"
         end,
+      elixirc_paths: elixirc_paths(Mix.env()),
       build_embedded: Mix.env() == :prod,
       consolidate_protocols: Mix.env() != :test,
       docs: [
@@ -36,4 +37,7 @@ defmodule ExFSM.Mixfile do
       ]
     ]
   end
+
+  def elixirc_paths(:test), do: ["lib", "test/fsm"]
+  def elixirc_paths(_), do: ["lib"]
 end

@@ -11,3 +11,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Macros `deftrans` and `defbypass` are now usable without parenthesis when
   importing the dependency in your `.formatter.exs` file.
+- Macros `deftrans` and `defbypass` now supports `when` clause.

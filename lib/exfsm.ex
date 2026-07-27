@@ -91,15 +91,28 @@ defmodule ExFSM do
   """
   @type transition :: ({event_name :: atom, event_param :: any}, state :: any ->
                          {:next_state, event_name :: atom, state :: any})
-  defmacro deftrans({state, _meta, [{trans, _param} | _rest]} = signature, body_block) do
+  defmacro deftrans(signature, body_block) do
+    {state, transition} =
+      case signature do
+        {:when, _, _} ->
+          {:when, _, [{state, _, [{transition, _} | _]} | _]} = signature
+
+          {state, transition}
+
+        _ ->
+          {state, _, [{transition, _} | _]} = signature
+
+          {state, transition}
+      end
+
     quote do
       @fsm Map.put(
              @fsm,
-             {unquote(state), unquote(trans)},
+             {unquote(state), unquote(transition)},
              {__MODULE__, @to || unquote(Enum.uniq(find_nextstates(body_block[:do])))}
            )
       doc = Module.get_attribute(__MODULE__, :doc)
-      @docs Map.put(@docs, {:transition_doc, unquote(state), unquote(trans)}, doc)
+      @docs Map.put(@docs, {:transition_doc, unquote(state), unquote(transition)}, doc)
       def unquote(signature), do: unquote(body_block[:do])
       @to nil
     end
@@ -111,7 +124,20 @@ defmodule ExFSM do
   defp find_nextstates(asts) when is_list(asts), do: Enum.flat_map(asts, &find_nextstates/1)
   defp find_nextstates(_), do: []
 
-  defmacro defbypass({event, _meta, _args} = signature, body_block) do
+  defmacro defbypass(signature, body_block) do
+    event =
+      case signature do
+        {:when, _, _} ->
+          {:when, _, [{event, _, _} | _]} = signature
+
+          event
+
+        _ ->
+          {event, _, _} = signature
+
+          event
+      end
+
     quote do
       @bypasses Map.put(@bypasses, unquote(event), __MODULE__)
       doc = Module.get_attribute(__MODULE__, :doc)
