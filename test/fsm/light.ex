@@ -21,6 +21,10 @@ defmodule ExFSM.Test.FSM.Light do
     {:next_state, :off, state}
   end
 
+  deftrans on({:on, _}, _) do
+    {:error, :already_on}
+  end
+
   deftrans off({:on, _}, state) when state.usage > 0 do
     {:next_state, :broken, state}
   end
