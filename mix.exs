@@ -1,10 +1,12 @@
 defmodule ExFSM.Mixfile do
   use Mix.Project
 
+  @version "1.0.0"
+
   def project do
     [
       app: :exfsm,
-      version: "0.1.6",
+      version: @version,
       elixir:
         if Mix.env() == :dev do
           ">= 1.15.0"
@@ -17,7 +19,7 @@ defmodule ExFSM.Mixfile do
       docs: [
         main: "ExFSM",
         extras: ["CHANGELOG.md"],
-        source_url: "https://github.com/kbrw/exfsm/tree/v0.1.6",
+        source_url: "https://github.com/kbrw/exfsm/tree/v#{@version}",
         source_ref: "master"
       ],
       description: """
