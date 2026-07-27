@@ -1,6 +1,6 @@
 # ExFSM #
 
-[![Build Status](https://travis-ci.org/kbrw/exfsm.svg?branch=master)](https://travis-ci.org/kbrw/exfsm)
+[![Build Status](https://github.com/kbrw/exfsm/actions/workflows/.github/workflows/ci.yml/badge.svg)](https://github.com/kbrw/exfsm/actions/workflows/ci.yml)
 
 Simple elixir library to define composable FSM as function
 (not related at all with `:gen_fsm`, no state/process management).
