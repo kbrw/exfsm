@@ -18,6 +18,12 @@ end
 defmodule ExFSM.Test.FSM.Light do
   use ExFSM
 
+  ~FSM"""
+  on  -- off -> [off, broken]
+  on  -- on  -> broken
+  off -- on  -> [broken, on]
+  """
+
   deftrans on({:off, :with_hand}, state) do
     {:next_state, :off, state}
   end

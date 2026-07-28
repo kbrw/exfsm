@@ -31,6 +31,11 @@ defmodule ExFSM.Dummy.FSM do
 
   use ExFSM
 
+  ~FSM"""
+  opened -- close -> closed
+  closed -- open  -> opened
+  """
+
   deftrans opened({:close, _}, state), do: {:next_state, :closed, state}
   deftrans closed({:open, _}, state), do: {:next_state, :opened, state}
 end

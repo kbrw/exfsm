@@ -86,9 +86,11 @@ defmodule ExFSM do
     end
   end
 
-  defmacro __before_compile__(_env) do
+  defmacro __before_compile__(env) do
+    fsm = Macro.escape(Module.get_attribute(env.module, fsm_attribute_name()))
+
     quote do
-      def fsm, do: @fsm
+      def fsm, do: unquote(fsm)
       def event_bypasses, do: @bypasses
       def docs, do: @docs
     end
@@ -179,6 +181,133 @@ defmodule ExFSM do
       def unquote(signature), do: unquote(body_block[:do])
       @bypass_doc nil
     end
+  end
+
+  defp attribute_name, do: :fsm_description
+  defp attribute_description_line, do: :"#{attribute_name()}_line"
+  defp fsm_attribute_name, do: :fsm
+
+  @doc ~S(
+  A sigil to enumerate transitions.
+
+  When an FSM grows, it helps to quickly get an overview of the available
+  transition. This sigil's purpose is only for documentation:
+
+    ~FSM"""
+      on  -- off -> [off, broken]
+      on  -- on  -> broken
+      off -- on  -> [broken, on]
+    """
+
+  We used to add every transaction by hand to the FSM's module but it kept
+  getting out of sync. Thanks to this sigil, a compiler error is emitted if the
+  sigil's content becomes out of sync.
+
+  A `mix format` plugin for this sigil is also available, see
+  `ExFSM.FormatterPlugin`.
+  )
+  defmacro sigil_FSM(arg, []) do
+    {:<<>>, meta, ["" <> str]} = arg
+
+    ast =
+      case Code.string_to_quoted!("(#{str})", meta) do
+        transitions when is_list(transitions) ->
+          transitions
+
+        {:__block__, [], []} ->
+          []
+      end
+
+    _ = Module.put_attribute(__CALLER__.module, attribute_name(), ast)
+    _ = Module.put_attribute(__CALLER__.module, attribute_description_line(), __CALLER__.line)
+
+    quote do
+      @before_compile {unquote(__MODULE__), :__validate_description__}
+    end
+  end
+
+  def __validate_description__(env) do
+    ast = Module.get_attribute(env.module, attribute_name())
+
+    description =
+      MapSet.new(ast, fn
+        {:->, _meta0,
+         [
+           [{:--, _meta1, [{state_in, _meta2, _con2}, {event, _meta3, _cont3}]}],
+           {state_out, _meta4, _con4}
+         ]} ->
+          {state_in, event, MapSet.new([state_out])}
+
+        {:->, _meta0,
+         [[{:--, _meta1, [{state_in, _meta2, _con2}, {event, _meta3, _cont3}]}], states]}
+        when is_list(states) ->
+          state_outs = MapSet.new(states, fn {state, _meta4, _cont4} -> state end)
+          {state_in, event, state_outs}
+      end)
+
+    fsm =
+      Module.get_attribute(env.module, fsm_attribute_name())
+      |> MapSet.new(fn {{state_in, event}, {_module, state_outs}} ->
+        {state_in, event, MapSet.new(state_outs)}
+      end)
+
+    missing_descriptions = MapSet.difference(fsm, description)
+    missing_transitions = MapSet.difference(description, fsm)
+
+    msg =
+      if not Enum.empty?(missing_descriptions) do
+        """
+        The description is missing the following transitions:
+        #{format_transitions(missing_descriptions)}
+        """
+      else
+        ""
+      end
+
+    msg2 =
+      if not Enum.empty?(missing_transitions) do
+        """
+        The transitions are missing the following description:
+        #{format_transitions(missing_transitions)}
+        """
+      else
+        ""
+      end
+
+    case msg <> msg2 do
+      "" ->
+        :ok
+
+      error ->
+        line = Module.get_attribute(env.module, attribute_description_line())
+        raise(CompileError, file: env.file, line: line, description: "\n#{error}")
+    end
+  end
+
+  defp format_transitions(transitions) do
+    state_in_padding =
+      Enum.max(
+        Enum.map(transitions, fn {state_in, _, _} -> String.length(to_string(state_in)) end)
+      )
+
+    event_padding =
+      Enum.max(Enum.map(transitions, fn {_, event, _} -> String.length(to_string(event)) end))
+
+    fragment =
+      Enum.map_join(transitions, "\n", fn {state_in, event, state_outs} ->
+        state_in = String.pad_trailing(to_string(state_in), state_in_padding)
+        event = String.pad_trailing(to_string(event), event_padding)
+
+        state_out =
+          case Enum.to_list(state_outs) do
+            [state_out] -> to_string(state_out)
+            xs -> "[#{Enum.join(xs, ", ")}]"
+          end
+
+        "\t#{state_in} -- #{event} -> #{state_out}"
+      end)
+
+    fragment
   end
 end
 
