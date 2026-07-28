@@ -1,22 +1,19 @@
 defmodule ExFSM do
-  @type fsm_spec :: %{
-          {state_name :: atom, event_name :: atom} =>
-            {exfsm_module :: atom, [dest_statename :: atom]}
-        }
   @moduledoc """
-  After `use ExFSM` : define FSM transition handler with `deftrans
-  fromstate({action_name,params},state)`. A function `fsm` will be created
-  returning a map of the `fsm_spec` describing the fsm.
+  Module to define an FSM.
+
+  After `use ExFSM`: define FSM transition handler with `deftrans
+  fromstate({action_name,params},state)`. A function `fsm/0` will be created
+  returning a map of the `t:fsm_spec/0` describing the FSM.
 
   Destination states are found with AST introspection, if the
   `{:next_state,xxx,xxx}` is defined outside the `deftrans/2` function, you
-  have to define them manually defining a `@to` attribute.
+  have to define them manually via a `@to` attribute.
 
-  For instance :
+  For instance:
 
       iex> defmodule Elixir.Door do
       ...>   use ExFSM
-      ...>   @moduledoc false
       ...>
       ...>   @transition_doc "Close to open"
       ...>   @to [:opened]
@@ -65,6 +62,19 @@ defmodule ExFSM do
       }
   """
 
+  @typedoc "A module which `use ExFSM` and defines an FSM."
+  @type handler :: module()
+  @type state_name :: atom()
+
+  @type event :: {action_name, event_payload}
+  @type action_name :: atom()
+  @type event_payload :: term()
+
+  @type fsm_spec :: %{
+          {state_name(), event_name :: action_name()} =>
+            {exfsm_module :: handler(), [dest_statename :: state_name()]}
+        }
+
   defmacro __using__(_opts) do
     quote do
       import ExFSM
@@ -85,16 +95,27 @@ defmodule ExFSM do
   end
 
   @doc """
-  Define a function of type `transition` describing a state and its transition.
+  Defines a transition function.
+
   The function name is the state name, the transition is the first argument. A
   state object can be modified and is the second argument.
 
       deftrans opened({:close_door,_params},state) do
         {:next_state,:closed,state}
       end
+
+  The transition function has the following signature:
+  ```elixir
+    (event, state ->
+        {:next_state, state_name, state}
+        | {:next_state, state_name, state, timeout}
+        | term()
+    when event: ExFSM.event(),
+         state_name: ExFSM.state_name(),
+         state: ExFSM.Machine.State.t(),
+         timeout: non_neg_integer() | :infinity
+  ```
   """
-  @type transition :: ({event_name :: atom, event_param :: any}, state :: any ->
-                         {:next_state, event_name :: atom, state :: any})
   defmacro deftrans(signature, body_block) do
     {state, transition} =
       case signature do
@@ -163,16 +184,14 @@ end
 
 defmodule ExFSM.Machine do
   @moduledoc """
-  Module to simply use FSMs defined with ExFSM:
+  Module to simply use FSMs defined with `ExFSM`:
 
-  - `ExFSM.Machine.fsm/1` merge fsm from multiple handlers (see `ExFSM` to see
-  how to define one).
-  - `ExFSM.Machine.event_bypasses/1` merge bypasses from multiple handlers (see
-  `ExFSM` to see how to define one).
+  - `ExFSM.Machine.fsm/1` merges FSMs from multiple handlers.
+  - `ExFSM.Machine.event_bypasses/1` merges bypasses from multiple handlers.
   - `ExFSM.Machine.event/2` allows you to execute the correct handler from a
   state and action
 
-  Define a structure implementing `ExFSM.Machine.State` in order to define how
+  Defines a structure implementing `ExFSM.Machine.State` in order to define how
   to extract handlers and state_name from state, and how to apply state_name
   change. Then use `ExFSM.Machine.event/2` in order to execute transition.
 
@@ -213,16 +232,22 @@ defmodule ExFSM.Machine do
   """
 
   defprotocol State do
-    @doc "retrieve current state handlers from state object, return [Handler1,Handler2]"
+    @typedoc "All types that implement this protocol."
+    @type t :: term()
+
+    @doc "Gets `state`'s FSM handler modules."
+    @spec handlers(t()) :: [ExFSM.handler()]
     def handlers(state)
-    @doc "retrieve current state name from state object"
+    @doc "Gets `state`'s state_name."
+    @spec state_name(t()) :: ExFSM.state_name()
     def state_name(state)
-    @doc "set new state name"
+    @doc "Sets `state`'s state_name with `state_name`."
+    @spec set_state_name(t(), ExFSM.state_name()) :: t()
     def set_state_name(state, state_name)
   end
 
-  @doc "return the FSM as a map of transitions %{{state,action}=>{handler,[dest_states]}} based on handlers"
-  @spec fsm([exfsm_module :: atom]) :: ExFSM.fsm_spec()
+  @doc "Returns the FSM as a map of transitions `%{{state_name, action} => {handler, [dest_states]}}` based on handlers"
+  @spec fsm([exfsm_module :: ExFSM.handler()]) :: ExFSM.fsm_spec()
   def fsm(handlers) when is_list(handlers),
     do: handlers |> Enum.map(& &1.fsm()) |> Enum.concat() |> Enum.into(%{})
 
@@ -233,9 +258,9 @@ defmodule ExFSM.Machine do
 
   def event_bypasses(state), do: event_bypasses(State.handlers(state))
 
-  @doc "find the ExFSM Module from the list `handlers` implementing the event `action` from `state_name`"
-  @spec find_handler({state_name :: atom, event_name :: atom}, [exfsm_module :: atom]) ::
-          exfsm_module :: atom
+  @doc "Finds the ExFSM module from the list `handlers` implementing the event `action` from `state_name`"
+  @spec find_handler({ExFSM.state_name(), ExFSM.action_name()}, [ExFSM.handler()]) ::
+          ExFSM.handler()
   def find_handler({state_name, action}, handlers) when is_list(handlers) do
     case Map.get(fsm(handlers), {state_name, action}) do
       {handler, _} -> handler
@@ -243,7 +268,8 @@ defmodule ExFSM.Machine do
     end
   end
 
-  @doc "same as `find_handler/2` but using a 'meta' state implementing `ExFSM.Machine.State`"
+  @doc "Same as `find_handler/2` but uses a `t:ExFSM.Machine.State.t/0` from which state_name and handlers are retrieved."
+  @spec find_handler({ExFSM.Machine.State.t(), ExFSM.action_name()}) :: ExFSM.handler()
   def find_handler({state, action}),
     do: find_handler({State.state_name(state), action}, State.handlers(state))
 
@@ -267,13 +293,19 @@ defmodule ExFSM.Machine do
     end
   end
 
-  @doc "Meta application of the transition function, using `find_handler/2` to find the module implementing it."
-  @type meta_event_reply ::
+  @doc """
+  Executes a transition from `state`'s state_name with the given `event`.
+
+  If no handler module can handle the transition, the event function attempt to
+  retrieve an handler which can handle a bypass with the given action. If no
+  handler module can handle the bypass, `{:error, :illegal_action}` is
+  returned.
+  """
+  @spec event(ExFSM.Machine.State.t(), ExFSM.event()) ::
           {:next_state, ExFSM.Machine.State.t()}
-          | {:next_state, ExFSM.Machine.State.t(), timeout :: integer}
+          | {:next_state, ExFSM.Machine.State.t(), timeout :: non_neg_integer() | :infinity}
           | {:error, :illegal_action}
-  @spec event(ExFSM.Machine.State.t(), {event_name :: atom, event_params :: any}) ::
-          meta_event_reply
+          | term()
   def event(state, {action, params}) do
     case find_handler({state, action}) do
       nil ->
@@ -311,7 +343,7 @@ defmodule ExFSM.Machine do
     end
   end
 
-  @spec available_actions(ExFSM.Machine.State.t()) :: [action_name :: atom]
+  @spec available_actions(ExFSM.Machine.State.t()) :: [ExFSM.action_name()]
   def available_actions(state) do
     fsm_actions =
       ExFSM.Machine.fsm(state)
@@ -322,7 +354,7 @@ defmodule ExFSM.Machine do
     Enum.uniq(fsm_actions ++ bypasses_actions)
   end
 
-  @spec action_available?(ExFSM.Machine.State.t(), action_name :: atom) :: boolean
+  @spec action_available?(ExFSM.Machine.State.t(), ExFSM.action_name()) :: boolean()
   def action_available?(state, action) do
     action in available_actions(state)
   end
