@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   importing the dependency in your `.formatter.exs` file.
 - Macros `deftrans` and `defbypass` now supports `when` clause.
 - Sigil `ExFSM.sigil_FSM/2` and its formatter plugin `ExFSM.FormatterPlugin`.
+- `use ExFSM` now accepts the options `:with_action_name_macros` and
+  `:with_action_names_guard`.
 
 ### Fixed
 

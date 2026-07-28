@@ -10,6 +10,16 @@ defmodule ExFSM do
   `{:next_state,xxx,xxx}` is defined outside the `deftrans/2` function, you
   have to define them manually via a `@to` attribute.
 
+  When used, it accepts the following options:
+
+  * `:with_action_name_macros` - adds macros for each FSM's action bearing its
+    name which returns the action's name. Macros are added via the
+    `@before_compile` hook.
+
+  * `:with_action_names_guard` - adds a `is_action/1` guard which checks if the
+    given term is an action of the FSM. The guard is added via the
+    `@before_compile` hook.
+
   For instance:
 
       iex> defmodule Elixir.Door do
@@ -75,7 +85,10 @@ defmodule ExFSM do
             {exfsm_module :: handler(), [dest_statename :: state_name()]}
         }
 
-  defmacro __using__(_opts) do
+  defmacro __using__(opts) do
+    with_action_name_macros? = Keyword.get(opts, :with_action_name_macros, false)
+    with_action_names_guard? = Keyword.get(opts, :with_action_names_guard, false)
+
     quote do
       import ExFSM
       @fsm %{}
@@ -83,6 +96,12 @@ defmodule ExFSM do
       @docs %{}
       @to nil
       @before_compile ExFSM
+
+      if unquote(with_action_name_macros?),
+        do: @before_compile({unquote(__MODULE__), :__build_action_name_macros__})
+
+      if unquote(with_action_names_guard?),
+        do: @before_compile({unquote(__MODULE__), :__build_action_names_guard__})
     end
   end
 
@@ -186,6 +205,34 @@ defmodule ExFSM do
   defp attribute_name, do: :fsm_description
   defp attribute_description_line, do: :"#{attribute_name()}_line"
   defp fsm_attribute_name, do: :fsm
+
+  defmacro __build_action_name_macros__(env) do
+    Module.get_attribute(env.module, fsm_attribute_name())
+    |> MapSet.new(fn {{_state_in, action_name}, {_module, _state_outs}} -> action_name end)
+    |> Enum.map(fn action_name ->
+      quote do
+        @doc "Returns `#{unquote(inspect(action_name))}`."
+        defmacro unquote(Macro.var(action_name, __MODULE__)), do: unquote(action_name)
+      end
+    end)
+  end
+
+  defmacro __build_action_names_guard__(env) do
+    action_names =
+      Module.get_attribute(env.module, fsm_attribute_name())
+      |> MapSet.new(fn {{_state_in, action_name}, {_module, _state_outs}} -> action_name end)
+      |> Enum.to_list()
+
+    handler_module = Enum.join(Module.split(env.module), ".")
+
+    quote do
+      @doc """
+      Returns `true` if `term` is an action used in a transition of the
+      `#{unquote(handler_module)}` module, `false` otherwise.
+      """
+      defguard is_action(term) when term in unquote(action_names)
+    end
+  end
 
   @doc ~S(
   A sigil to enumerate transitions.
